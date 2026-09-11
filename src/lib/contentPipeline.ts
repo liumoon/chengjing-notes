@@ -67,14 +67,17 @@ function warnings(...values: Array<string | undefined>) {
 }
 
 /** Markdown → 卡片內容；`previousHtml` 用於復用核取清單 ID。 */
-export async function fromMarkdown(markdown: string, options: { previousHtml?: string; allowRemoteImages?: boolean } = {}): Promise<ContentChunk> {
+export async function fromMarkdown(markdown: string, options: { previousHtml?: string; allowRemoteImages?: boolean; allowDataImages?: boolean } = {}): Promise<ContentChunk> {
   const text = stripBom(markdown);
   if (!text.trim()) return chunk("<p></p>");
   const parsed = await markdownToDocument(text);
   const rendered = parsed.value?.content?.length ? await documentToHtml(parsed.value) : { value: "", engine: parsed.engine };
   if (!rendered.value) return { ...fromPlainText(text), warnings: warnings("markdown-engine-fallback") };
   const remoteImages = options.allowRemoteImages ? [] : findRemoteImages(rendered.value);
-  const sanitized = sanitizeImportHtml(rendered.value, { allowRemoteImages: options.allowRemoteImages === true });
+  const sanitized = sanitizeImportHtml(rendered.value, {
+    allowRemoteImages: options.allowRemoteImages === true,
+    allowDataImages: options.allowDataImages === true,
+  });
   const reconciled = reconcileTaskIds(sanitized, options.previousHtml || "");
   const normalized = await normalizeHtml(reconciled.html);
   return chunk(normalized.value, {

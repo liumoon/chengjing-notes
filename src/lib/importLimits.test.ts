@@ -13,6 +13,8 @@ describe("檔案分類", () => {
     expect(classifyDocument("report.pdf", "application/pdf")).toBe("pdf");
     expect(classifyDocument("letter.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")).toBe("docx");
     expect(classifyDocument("photo.JPG")).toBe("image");
+    expect(classifyDocument("diagram.svg")).toBe("image");
+    expect(classifyDocument("diagram", "image/svg+xml")).toBe("image");
     expect(classifyDocument("voice.m4a", "audio/mp4")).toBe("audio");
     expect(classifyDocument("clip.mp4", "video/mp4")).toBe("video");
     expect(classifyDocument("notes.txt", "text/plain")).toBe("text");
@@ -25,6 +27,10 @@ describe("大小上限", () => {
     expect(sizeLimitFor("text")).toBe(20 * 1024 * 1024);
     expect(sizeLimitFor("docx")).toBe(50 * 1024 * 1024);
     expect(sizeLimitFor("pdf")).toBe(100 * 1024 * 1024);
+    expect(sizeLimitFor("image", "diagram.svg", "image/svg+xml")).toBe(10 * 1024 * 1024);
+    expect(sizeLimitFor("image", "photo.png", "image/png")).toBe(200 * 1024 * 1024);
+    expect(IMPORT_LIMITS.svgMaxNodes).toBe(10_000);
+    expect(IMPORT_LIMITS.svgMaxDepth).toBe(32);
     expect(IMPORT_LIMITS.remoteImageBytes).toBe(10 * 1024 * 1024);
     expect(IMPORT_LIMITS.remoteTotalBytesPerDocument).toBe(50 * 1024 * 1024);
     expect(IMPORT_LIMITS.remoteTimeoutMs).toBe(15_000);
@@ -36,5 +42,7 @@ describe("大小上限", () => {
     expect(checkSizeLimit("text", IMPORT_LIMITS.textBytes + 1).allowed).toBe(false);
     expect(checkSizeLimit("pdf", IMPORT_LIMITS.pdfBytes).allowed).toBe(true);
     expect(checkSizeLimit("pdf", IMPORT_LIMITS.pdfBytes + 1).allowed).toBe(false);
+    expect(checkSizeLimit("image", IMPORT_LIMITS.svgBytes, "diagram.svg", "image/svg+xml").allowed).toBe(true);
+    expect(checkSizeLimit("image", IMPORT_LIMITS.svgBytes + 1, "diagram.svg", "image/svg+xml").allowed).toBe(false);
   });
 });

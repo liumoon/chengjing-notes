@@ -76,12 +76,18 @@ export function scrollIntoViewWhenReady(id: string, options: ScrollIntoViewOptio
 }
 
 export function dataUrlToBlob(dataUrl: string) {
-  const [meta, encoded] = dataUrl.split(",");
-  const mime = /data:([^;]+)/.exec(meta)?.[1] || "application/octet-stream";
-  const binary = atob(encoded);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return new Blob([bytes], { type: mime });
+  const match = String(dataUrl || "").match(/^data:([^;,]+)((?:;[^,]*)*),(.*)$/is);
+  if (!match) throw new Error("invalid-data-url");
+  const mime = match[1] || "application/octet-stream";
+  const metadata = match[2] || "";
+  const encoded = match[3] || "";
+  if (/(?:^|;)base64(?:;|$)/i.test(metadata)) {
+    const binary = atob(encoded.replace(/\s/g, ""));
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return new Blob([bytes], { type: mime });
+  }
+  return new Blob([decodeURIComponent(encoded)], { type: mime });
 }
 
 export function blobToDataUrl(blob: Blob): Promise<string> {

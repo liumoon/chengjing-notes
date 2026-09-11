@@ -85,7 +85,7 @@ export function CreateCardModal() {
     if (!window.chengjing || busy) return;
     setBusy(true); setStatus(t("import.readingFiles"));
     try {
-      const result = await window.chengjing.files.open({ title: t("import.dialogTitle"), multiple: true, metadataOnly: true, filters: [{ name: t("import.supported"), extensions: ["pdf", "md", "txt", "html", "docx", "png", "jpg", "jpeg", "webp", "gif", "mp3", "m4a", "wav", "ogg", "flac", "mp4", "mov", "webm", "mkv"] }, { name: t("import.allFiles"), extensions: ["*"] }] });
+      const result = await window.chengjing.files.open({ title: t("import.dialogTitle"), multiple: true, metadataOnly: true, filters: [{ name: t("import.supported"), extensions: ["pdf", "md", "txt", "html", "docx", "png", "jpg", "jpeg", "webp", "gif", "svg", "mp3", "m4a", "wav", "ogg", "flac", "mp4", "mov", "webm", "mkv"] }, { name: t("import.allFiles"), extensions: ["*"] }] });
       if (result.canceled) { setBusy(false); return; }
       // 統一走共用的匯入管線：一檔一卡、保留原檔、逐檔進度與部分成功。
       const inputs = result.files.map((file) => ({
@@ -110,7 +110,7 @@ export function CreateCardModal() {
     <div className="create-card-fields">
       {mode === "note" && <><input className="create-card-title" autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder={t("create.titlePlaceholder")} /><textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder={t("create.bodyPlaceholder")} /></>}
       {mode === "web" && <div className="create-web-source"><Globe2 size={24} /><h3>{t("import.webTitle")}</h3><p>{t("import.webDescription")}</p><label><Link2 size={16} /><input autoFocus type="url" required value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://…" /></label></div>}
-      {mode === "file" && <div className="create-file-source"><Upload size={25} /><h3>{t("import.fileTitle")}</h3><p>{t("import.fileDescription")}</p><div><span><FileText size={15} />PDF / DOCX / MD</span><span><Image size={15} />PNG / JPG / WebP</span><span><Music2 size={15} />MP3 / WAV</span><span><Video size={15} />MP4 / MOV</span></div><button type="button" className="primary-button" disabled={busy} onClick={chooseFiles}>{busy ? <LoaderCircle size={16} className="spin" /> : <Upload size={16} />}{t("import.chooseFiles")}</button></div>}
+      {mode === "file" && <div className="create-file-source"><Upload size={25} /><h3>{t("import.fileTitle")}</h3><p>{t("import.fileDescription")}</p><div><span><FileText size={15} />PDF / DOCX / MD</span><span><Image size={15} />PNG / JPG / WebP / SVG</span><span><Music2 size={15} />MP3 / WAV</span><span><Video size={15} />MP4 / MOV</span></div><button type="button" className="primary-button" disabled={busy} onClick={chooseFiles}>{busy ? <LoaderCircle size={16} className="spin" /> : <Upload size={16} />}{t("import.chooseFiles")}</button></div>}
       {destination !== "fragment" && <KnowledgeGroupPicker value={collectionId} onChange={setCollectionId} />}
     </div>
     <div className="destination-choice">

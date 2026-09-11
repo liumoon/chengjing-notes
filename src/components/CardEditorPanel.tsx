@@ -50,6 +50,10 @@ function StandardAttachmentPreview({ attachment, downloadLabel }: { attachment: 
     return () => { if (next && shouldRevokeAttachmentUrl(attachment)) URL.revokeObjectURL(next); };
   }, [attachment]);
   if (!url) return null;
+  // Source SVGs stay downloadable as originals; only sanitized inline SVGs are previewed.
+  if (attachment.mime === "image/svg+xml" && attachment.role === "source") {
+    return <a className="attachment-download" href={url} download={attachment.name}><FileText size={16} />{downloadLabel}</a>;
+  }
   if (attachment.mime.startsWith("image/")) return <img className="attachment-image" src={url} alt={attachment.name} />;
   if (attachment.mime.startsWith("audio/")) return <audio className="attachment-media" controls src={url} />;
   if (attachment.mime.startsWith("video/")) return <video className="attachment-video" controls src={url} />;

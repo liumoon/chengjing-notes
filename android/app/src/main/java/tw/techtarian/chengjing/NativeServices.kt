@@ -67,9 +67,10 @@ class NativeServices(private val context: Context, private val backupApp: String
         file.inputStream().use { input -> val buffer = ByteArray(65536); while (true) { val count=input.read(buffer); if(count<0) break; digest.update(buffer,0,count) } }
         return JSONObject().put("id", args.optString("id", file.name)).put("name", args.optString("name", "attachment")).put("mime", args.optString("mime", "application/octet-stream")).put("size", file.length()).put("relativePath", file.name).put("storage", "file").put("sha256", digest.digest().joinToString("") { "%02x".format(it) }).put("createdAt", args.optLong("createdAt", System.currentTimeMillis()))
     }
-    fun attachmentResponse(name: String): WebResourceResponse? = try {
+    fun attachmentResponse(name: String, mimeHint: String = ""): WebResourceResponse? = try {
         val file = safeFile(name)
-        if (!file.isFile) null else WebResourceResponse("application/octet-stream", null, file.inputStream())
+        val mime = if (mimeHint == "image/svg+xml") "image/svg+xml" else "application/octet-stream"
+        if (!file.isFile) null else WebResourceResponse(mime, null, file.inputStream())
     } catch (_: Exception) { null }
     fun saveToUri(uri: Uri, args: JSONObject) {
         val data = args.getString("data")
@@ -170,14 +171,24 @@ class NativeServices(private val context: Context, private val backupApp: String
         if (buffer.size < 4) return ""
         val b0 = buffer[0].toInt() and 0xff; val b1 = buffer[1].toInt() and 0xff
         val b2 = buffer[2].toInt() and 0xff; val b3 = buffer[3].toInt() and 0xff
-        return when {
+        val binaryMime = when {
             b0 == 0x89 && b1 == 0x50 && b2 == 0x4e && b3 == 0x47 -> "image/png"
             b0 == 0xff && b1 == 0xd8 && b2 == 0xff -> "image/jpeg"
             b0 == 0x47 && b1 == 0x49 && b2 == 0x46 && b3 == 0x38 -> "image/gif"
             b0 == 0x42 && b1 == 0x4d -> "image/bmp"
             b0 == 0x46 && b1 == 0x4f && b2 == 0x57 && b3 == 0x50 -> "image/webp"
-            else -> ""
+            else -> null
         }
+        if (binaryMime != null) return binaryMime
+        if (buffer.size > 10L * 1024 * 1024) return ""
+        val source = buffer.toString(Charsets.UTF_8).removePrefix("\uFEFF")
+        if (Regex("<\\s*!doctype\\b|<\\s*!entity\\b|<!\\[cdata\\[", RegexOption.IGNORE_CASE).containsMatchIn(source)) return ""
+        val withoutProlog = source
+            .replace(Regex("^\\s*<\\?xml\\b[^?]*\\?>\\s*", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("^(?:<!--[\\s\\S]*?-->\\s*)+", RegexOption.IGNORE_CASE), "")
+            .trim()
+        return if (Regex("^<svg(?:\\s|/?>)", RegexOption.IGNORE_CASE).containsMatchIn(withoutProlog) &&
+            Regex("(?:/>|</svg>)\\s*$", RegexOption.IGNORE_CASE).containsMatchIn(withoutProlog)) "image/svg+xml" else ""
     }
 
     private fun fetchRemoteImage(url: String, maxBytes: Long, timeoutMs: Long, maxRedirects: Int): JSONObject {

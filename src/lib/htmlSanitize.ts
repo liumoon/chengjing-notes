@@ -31,16 +31,21 @@ const FORBIDDEN_URI = /^(?:javascript|vbscript|data|blob|file|chrome|resource):/
  * 會在清理階段被剝掉 src，內嵌圖片隨之被 ProseMirror 丟棄；
  * 尾段仍沿用預設規則放行相對路徑與無協定值。
  */
-const ALLOWED_URI_PATTERN = /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|attachment):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;
+const ALLOWED_URI_PATTERN = /^(?:(?:data:image\/(?:png|jpe?g|webp|gif|avif|bmp|svg\+xml)(?:;[^,]*)?,)|(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|attachment):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;
 
-const SAFE_DATA_IMAGE = /^data:image\/(png|jpe?g|webp|gif|avif|bmp);base64,[a-z0-9+/=\s]+$/i;
+const SAFE_DATA_IMAGE = /^data:image\/(?:png|jpe?g|webp|gif|avif|bmp);base64,[a-z0-9+/=\s]+$/i;
+const SAFE_SVG_DATA_IMAGE = /^data:image\/svg\+xml(?:;[^,]*)?,[\s\S]+$/i;
+
+export function isSafeDataImage(value: string) {
+  return SAFE_DATA_IMAGE.test(String(value || "").trim()) || SAFE_SVG_DATA_IMAGE.test(String(value || "").trim());
+}
 
 export function isSafeUri(value: string, { allowAttachment = true, allowDataImage = false }: { allowAttachment?: boolean; allowDataImage?: boolean } = {}) {
   const uri = String(value || "").trim();
   if (!uri) return false;
   if (allowAttachment && uri.startsWith("attachment://")) return true;
   // data URL 圖片只在匯入當下允許，隨後立刻轉成附件，絕不留存長字串。
-  if (allowDataImage && SAFE_DATA_IMAGE.test(uri)) return true;
+  if (allowDataImage && isSafeDataImage(uri)) return true;
   if (FORBIDDEN_URI.test(uri)) return false;
   return /^(?:https?:)?\/\//i.test(uri) || uri.startsWith("/") || uri.startsWith("./") || uri.startsWith("../");
 }

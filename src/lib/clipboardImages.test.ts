@@ -37,9 +37,9 @@ function attachment(overrides: Partial<AttachmentRecord> = {}): AttachmentRecord
 }
 
 describe("剪貼簿圖片辨識", () => {
-  it("接受常見圖片 MIME，拒絕 SVG 與非檔案項目", () => {
+  it("接受常見圖片 MIME（含 SVG）與檔案項目，拒絕非檔案項目", () => {
     expect(isSupportedClipboardImageMime("IMAGE/PNG")).toBe(true);
-    expect(isSupportedClipboardImageMime("image/svg+xml")).toBe(false);
+    expect(isSupportedClipboardImageMime("image/svg+xml")).toBe(true);
 
     const png = new File(["png"], "截圖.png", { type: "image/png" });
     const svg = new File(["<svg />"], "image.svg", { type: "image/svg+xml" });
@@ -53,7 +53,10 @@ describe("剪貼簿圖片辨識", () => {
       },
     } as unknown as ClipboardEvent;
 
-    expect(extractClipboardImages(event)).toEqual([{ blob: png, name: "截圖.png", mime: "image/png" }]);
+    expect(extractClipboardImages(event)).toEqual([
+      { blob: png, name: "截圖.png", mime: "image/png" },
+      { blob: svg, name: "image.svg", mime: "image/svg+xml" },
+    ]);
   });
 
   it("在檔案 MIME 遺失時依副檔名辨識圖片", () => {
@@ -76,6 +79,22 @@ describe("剪貼簿圖片辨識", () => {
     expect(image.mime).toBe("image/png");
     expect(image.name).toBe("內嵌截圖");
     expect(await image.blob.text()).toBe("png");
+  });
+
+  it("支援 URL encoded SVG data URL", async () => {
+    const source = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="4" height="4"/></svg>';
+    const event = {
+      clipboardData: {
+        items: [{ kind: "string", type: "text/html", getAsFile: () => null }],
+        files: [],
+        getData: (type: string) => type === "text/html"
+          ? `<img alt="向量圖" src="data:image/svg+xml,${encodeURIComponent(source)}">`
+          : "",
+      },
+    } as unknown as ClipboardEvent;
+    const [image] = extractClipboardImages(event);
+    expect(image.mime).toBe("image/svg+xml");
+    expect(await image.blob.text()).toContain("<rect");
   });
 });
 
@@ -143,5 +162,27 @@ describe("剪貼簿圖片保存", () => {
   it("產生帶有 attachment:// 引用的 Markdown", () => {
     expect(clipboardMarkdownForAttachments([attachment(), attachment({ id: "inline-2", name: "photo.jpg" })]))
       .toBe("![截圖.png](attachment://inline-1)\n\n![photo.jpg](attachment://inline-2)");
+  });
+
+  it("保存 SVG 前清理危險內容，附件不含 script 或事件屬性", async () => {
+    const input = {
+      blob: new Blob(['<svg onload="alert(1)"><script>alert(2)</script><rect onclick="alert(3)" width="4" height="4"/></svg>'], { type: "image/svg+xml" }),
+      mime: "image/svg+xml",
+      name: "icon.svg",
+    };
+    const [saved] = await persistClipboardImages([input]);
+    const content = await saved.blob?.text();
+    expect(saved.role).toBe("inline");
+    expect(content?.toLowerCase()).not.toContain("<script");
+    expect(content?.toLowerCase()).not.toContain("onload");
+    expect(content?.toLowerCase()).not.toContain("onclick");
+  });
+
+  it("拒絕無法解析的 SVG 並清理同批已建立的附件", async () => {
+    await expect(persistClipboardImages([
+      { blob: new Blob(["png"], { type: "image/png" }), mime: "image/png", name: "ok.png" },
+      { blob: new Blob(["not-svg"], { type: "image/svg+xml" }), mime: "image/svg+xml", name: "bad.svg" },
+    ])).rejects.toThrow("clipboard-svg-rejected");
+    expect(await db.attachments.count()).toBe(0);
   });
 });

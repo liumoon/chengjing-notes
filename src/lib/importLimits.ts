@@ -7,6 +7,9 @@ export const IMPORT_LIMITS = {
   docxBytes: 50 * 1024 * 1024,
   pdfBytes: 100 * 1024 * 1024,
   mediaBytes: 200 * 1024 * 1024,
+  svgBytes: 10 * 1024 * 1024,
+  svgMaxNodes: 10_000,
+  svgMaxDepth: 32,
   remoteImageBytes: 10 * 1024 * 1024,
   remoteTotalBytesPerDocument: 50 * 1024 * 1024,
   remoteTimeoutMs: 15_000,
@@ -22,20 +25,24 @@ export function classifyDocument(name: string, mime = ""): ImportFileKind {
   if (lower.endsWith(".html") || lower.endsWith(".htm") || mime === "text/html") return "html";
   if (lower.endsWith(".docx") || mime.includes("wordprocessingml")) return "docx";
   if (lower.endsWith(".pdf") || mime === "application/pdf") return "pdf";
-  if (mime.startsWith("image/") || /\.(png|jpe?g|webp|gif|avif|bmp)$/.test(lower)) return "image";
+  if (mime.startsWith("image/") || /\.(png|jpe?g|webp|gif|avif|bmp|svg)$/.test(lower)) return "image";
   if (mime.startsWith("audio/")) return "audio";
   if (mime.startsWith("video/")) return "video";
   if (mime.startsWith("text/") || /\.(txt|csv|json|log|rtf?)$/.test(lower)) return "text";
   return "other";
 }
 
-export function sizeLimitFor(kind: ImportFileKind) {
+export function isSvgDocument(name: string, mime = "") {
+  return String(mime || "").toLowerCase() === "image/svg+xml" || /\.svg$/i.test(String(name || ""));
+}
+
+export function sizeLimitFor(kind: ImportFileKind, name = "", mime = "") {
   switch (kind) {
     case "docx": return IMPORT_LIMITS.docxBytes;
     case "pdf": return IMPORT_LIMITS.pdfBytes;
     case "audio":
-    case "video":
-    case "image": return IMPORT_LIMITS.mediaBytes;
+    case "video": return IMPORT_LIMITS.mediaBytes;
+    case "image": return isSvgDocument(name, mime) ? IMPORT_LIMITS.svgBytes : IMPORT_LIMITS.mediaBytes;
     default: return IMPORT_LIMITS.textBytes;
   }
 }
@@ -45,8 +52,8 @@ export interface SizeVerdict {
   limit: number;
 }
 
-export function checkSizeLimit(kind: ImportFileKind, bytes: number): SizeVerdict {
-  const limit = sizeLimitFor(kind);
+export function checkSizeLimit(kind: ImportFileKind, bytes: number, name = "", mime = ""): SizeVerdict {
+  const limit = sizeLimitFor(kind, name, mime);
   return { allowed: Number.isFinite(bytes) && bytes >= 0 && bytes <= limit, limit };
 }
 

@@ -52,7 +52,9 @@ export function cardExtensions(): AnyExtension[] {
     TableRow,
     TableHeader,
     TableCell,
-    Image.configure({ inline: false, allowBase64: false }),
+    // Data URLs are accepted only as a temporary parser hand-off. Import and
+    // editor pipelines sanitize them before contentHtml is persisted.
+    Image.configure({ inline: false, allowBase64: true }),
   ];
 }
 

@@ -105,7 +105,7 @@ class MainActivity : ComponentActivity() {
         val assets = WebViewAssetLoader.Builder().addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this)).build()
         web.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-                if (request.url.host == "appassets.androidplatform.net" && request.url.path?.startsWith("/attachments/") == true) return services.attachmentResponse(request.url.lastPathSegment ?: "")
+                if (request.url.host == "appassets.androidplatform.net" && request.url.path?.startsWith("/attachments/") == true) return services.attachmentResponse(request.url.lastPathSegment ?: "", request.url.getQueryParameter("mime") ?: "")
                 return assets.shouldInterceptRequest(request.url)
             }
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {

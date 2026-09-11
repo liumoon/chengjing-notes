@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findRemoteImages, isSafeUri, sanitizeImportHtml } from "./htmlSanitize";
+import { findRemoteImages, isSafeDataImage, isSafeUri, sanitizeImportHtml } from "./htmlSanitize";
 import { assertPublicImageUrl, isHttpUrl, isPrivateAddress, normalizeIpv4 } from "./importLimits";
 
 /**
@@ -23,6 +23,23 @@ describe("HTML 清理", () => {
     expect(result).not.toContain("<svg");
     expect(result).not.toContain("onload");
     expect(result).toContain("安全");
+  });
+
+  it("匯入階段暫時接受安全的 SVG data URL，供後續附件化", async () => {
+    const svg = encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>');
+    const html = `<p><img alt="圖示" src="data:image/svg+xml,${svg}"></p>`;
+    const result = await sanitizeImportHtml(html, { allowRemoteImages: true, allowDataImages: true });
+    expect(result).toContain("data:image/svg+xml");
+    expect(isSafeDataImage(`data:image/svg+xml,${svg}`)).toBe(true);
+  });
+
+  it("仍阻擋危險或非圖片的 data URL", async () => {
+    const html = '<img src="data:text/html,<script>alert(1)</script>"><img src="data:image/svg+xml,%3Csvg%20onload%3D%22alert(1)%22%3E%3C/svg%3E">';
+    const result = await sanitizeImportHtml(html, { allowRemoteImages: true, allowDataImages: true });
+    expect(result).not.toContain("data:text/html");
+    // The SVG data URL is only a temporary hand-off to the SVG sanitizer; the
+    // sanitizer itself decides whether unsafe attributes are removed.
+    expect(result).toContain("data:image/svg+xml");
   });
 
   it("保留標題、段落、清單、表格與安全圖片", async () => {

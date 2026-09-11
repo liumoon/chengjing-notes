@@ -90,7 +90,7 @@ export function ImportWorkbench({ compact = false, onImported }: ImportWorkbench
       multiple: true,
       metadataOnly: true,
       filters: [
-        { name: copy.importTitle, extensions: ["pdf", "md", "markdown", "txt", "html", "htm", "docx", "png", "jpg", "jpeg", "webp", "gif", "mp3", "m4a", "wav", "mp4", "mov", "webm"] },
+        { name: copy.importTitle, extensions: ["pdf", "md", "markdown", "txt", "html", "htm", "docx", "png", "jpg", "jpeg", "webp", "gif", "svg", "mp3", "m4a", "wav", "mp4", "mov", "webm"] },
         { name: "*", extensions: ["*"] },
       ],
     });

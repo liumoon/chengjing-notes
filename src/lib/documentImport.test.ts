@@ -40,6 +40,7 @@ const DOCX_BASE64 =
   "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";
 
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+const SVG = encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg"><rect width="8" height="8" fill="#168"/></svg>');
 
 function docxBlob(): Blob {
   const binary = atob(DOCX_BASE64);
@@ -111,6 +112,63 @@ describe("HTML 匯入的圖片處理", () => {
     expect(content).not.toContain("javascript:");
     expect(content).toContain("正常文字");
     expect(outcome.warnings).toContain("blocked-html");
+  });
+});
+
+describe("SVG 與 Markdown 圖片處理", () => {
+  it("standalone SVG 保留 source，並把清理後內容另存為 inline 附件", async () => {
+    const outcome = await importDocument({
+      name: "圖示.svg",
+      blob: new Blob([decodeURIComponent(SVG)], { type: "image/svg+xml" }),
+      sourcePath: "/tmp/doc/圖示.svg",
+    }, { language: "zh-TW" });
+    expect(outcome.ok).toBe(true);
+    expect(outcome.card?.kind).toBe("image");
+    expect(outcome.card?.contentHtml).toContain("attachment://");
+    expect(outcome.card?.contentHtml).not.toContain("<svg");
+    const attachments = await db.attachments.toArray();
+    expect(attachments.filter((attachment) => attachment.role === "source")).toHaveLength(1);
+    expect(attachments.filter((attachment) => attachment.role === "inline")).toHaveLength(1);
+  });
+
+  it("危險 standalone SVG 會清理後建立 inline 附件，並保留 source", async () => {
+    const outcome = await importDocument({
+      name: "bad.svg",
+      blob: new Blob(['<svg onload="alert(1)"><script>alert(2)</script></svg>'], { type: "image/svg+xml" }),
+      sourcePath: "/tmp/doc/bad.svg",
+    }, { language: "zh-TW" });
+    expect(outcome.ok).toBe(true);
+    expect(outcome.warnings).toContain("svg-sanitized");
+    expect(outcome.card?.contentHtml).toContain("attachment://");
+    expect((await db.attachments.toArray()).filter((attachment) => attachment.role === "source")).toHaveLength(1);
+    expect((await db.attachments.toArray()).filter((attachment) => attachment.role === "inline")).toHaveLength(1);
+  });
+
+  it("Markdown 的 SVG data URL 會轉成 inline 附件，且正文不保留 data URL", async () => {
+    const markdown = `# 圖示\n\n![向量圖](data:image/svg+xml,${SVG})`;
+    const outcome = await importDocument({
+      name: "vector.md",
+      blob: new Blob([markdown], { type: "text/markdown" }),
+      sourcePath: "/tmp/doc/vector.md",
+    }, { language: "zh-TW" });
+    expect(outcome.ok).toBe(true);
+    expect(outcome.card?.contentHtml).toContain("attachment://");
+    expect(outcome.card?.contentHtml).not.toContain("data:image/svg+xml");
+    expect((await db.attachments.toArray()).filter((attachment) => attachment.role === "inline")).toHaveLength(1);
+  });
+
+  it("Markdown 相對 SVG 找不到時保留可讀占位，不建立 inline 附件", async () => {
+    const markdown = "![缺圖](./missing.svg)";
+    const outcome = await importDocument({
+      name: "missing.md",
+      blob: new Blob([markdown], { type: "text/markdown" }),
+      sourcePath: "/tmp/doc/missing.md",
+    }, { language: "zh-TW" });
+    expect(outcome.ok).toBe(true);
+    expect(outcome.warnings).toContain("asset-missing");
+    expect(outcome.card?.contentHtml).not.toContain("<img");
+    expect(outcome.card?.contentHtml).toContain("./missing.svg");
+    expect((await db.attachments.toArray()).filter((attachment) => attachment.role === "inline")).toHaveLength(0);
   });
 });
 

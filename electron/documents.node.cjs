@@ -54,6 +54,13 @@ test("detectMime 依魔法檔頭辨別圖片格式", () => {
   assert.equal(detectMime("note.txt", Buffer.from("hello", "utf8")), "");
 });
 
+test("detectMime 辨識安全 SVG，並拒絕 DOCTYPE、ENTITY 與非 SVG 根節點", () => {
+  assert.equal(detectMime("vector.bin", Buffer.from('\uFEFF<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>', "utf8")), "image/svg+xml");
+  assert.equal(detectMime("bad.svg", Buffer.from("<!DOCTYPE svg><svg></svg>", "utf8")), "");
+  assert.equal(detectMime("bad.svg", Buffer.from("<svg><!ENTITY x 'bad'></svg>", "utf8")), "");
+  assert.equal(detectMime("bad.svg", Buffer.from("<html><svg></svg></html>", "utf8")), "");
+});
+
 /* -------------------------------------------------------------------------- */
 /* resolveLocalAssets：只讀來源資料夾                                          */
 /* -------------------------------------------------------------------------- */

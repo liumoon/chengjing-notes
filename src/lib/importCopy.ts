@@ -49,6 +49,8 @@ export interface ImportCopy {
   warningImageRejected: string;
   warningAssetMissing: string;
   warningPathTraversal: string;
+  warningSvgRejected: string;
+  warningSvgSanitized: string;
   warningUnsupported: string;
   warningMammoth: string;
   warningMarkdownFallback: string;
@@ -84,6 +86,7 @@ const zhTW: ImportCopy = {
   warningTruncated: "文件過長，已保留可解析的部分。", warningTooLarge: "檔案超過大小上限，已跳過。",
   warningBlockedHtml: "已移除不安全的 HTML（腳本、iframe、樣式或事件屬性）。", warningRemoteBlocked: "網路圖片未下載，已改成文字占位。",
   warningImageTooLarge: "圖片超過 10 MB，已保留網址占位。", warningImageRejected: "內容不是圖片，已略過。", warningAssetMissing: "找不到內嵌圖片，已改成文字占位。", warningPathTraversal: "已移除指向外部的相對路徑，避免讀取資料夾外的檔案。",
+  warningSvgRejected: "SVG 含有無法安全清理的內容，已保留原檔但未嵌入正文。", warningSvgSanitized: "SVG 中不安全的元素或屬性已移除，已保存清理後的內嵌圖片。",
   warningUnsupported: "不支援的檔案格式，已保留為一般附件。", warningMammoth: "Word 文件部分內容無法解析：{detail}",
   warningMarkdownFallback: "Markdown 引擎降級，格式可能簡化。", warningTasksRecreated: "{count} 個待辦無法對應，已建立新的識別。",
   errorCorrupted: "檔案已損毀，無法解析。", errorEncrypted: "檔案已加密，請先解除密碼保護。", errorParse: "解析失敗。", errorSave: "保存失敗。",
@@ -108,6 +111,7 @@ const zhCN: ImportCopy = {
   warningTruncated: "文档过长，已保留可解析的部分。", warningTooLarge: "文件超过大小上限，已跳过。",
   warningBlockedHtml: "已移除不安全的 HTML（脚本、iframe、样式或事件属性）。", warningRemoteBlocked: "网络图片未下载，已改为文字占位。",
   warningImageTooLarge: "图片超过 10 MB，已保留网址占位。", warningImageRejected: "内容不是图片，已跳过。", warningAssetMissing: "找不到嵌入图片，已改为文字占位。", warningPathTraversal: "已移除指向外部的相对路径，避免读取文件夹外的文件。",
+  warningSvgRejected: "SVG 包含无法安全清理的内容，已保留原文件但未嵌入正文。", warningSvgSanitized: "SVG 中不安全的元素或属性已移除，已保存清理后的内嵌图片。",
   warningUnsupported: "不支持的文件格式，已保留为普通附件。", warningMammoth: "Word 文档部分内容无法解析：{detail}",
   warningMarkdownFallback: "Markdown 引擎降级，格式可能简化。", warningTasksRecreated: "{count} 个待办无法对应，已创建新的标识。",
   errorCorrupted: "文件已损坏，无法解析。", errorEncrypted: "文件已加密，请先解除密码保护。", errorParse: "解析失败。", errorSave: "保存失败。",
@@ -131,6 +135,7 @@ const en: ImportCopy = {
   warningTruncated: "The document was too long; only the parseable part was kept.", warningTooLarge: "The file exceeded the size limit and was skipped.",
   warningBlockedHtml: "Unsafe HTML was removed (scripts, iframes, styles or event attributes).", warningRemoteBlocked: "Remote images were not downloaded and became text placeholders.",
   warningImageTooLarge: "An image exceeded 10 MB; its URL was kept as a placeholder.", warningImageRejected: "Content was not an image and was skipped.", warningAssetMissing: "Embedded images could not be found and became text placeholders.", warningPathTraversal: "Relative paths pointing outside the document folder were removed.",
+  warningSvgRejected: "The SVG contained content that could not be sanitized safely; the original was kept but not embedded.", warningSvgSanitized: "Unsafe SVG elements or attributes were removed; a sanitized inline image was saved.",
   warningUnsupported: "Unsupported format; kept as a plain attachment.", warningMammoth: "Some Word content could not be parsed: {detail}",
   warningMarkdownFallback: "Markdown engine fell back; formatting may be simplified.", warningTasksRecreated: "{count} tasks could not be matched and got new identifiers.",
   errorCorrupted: "The file is corrupted and could not be parsed.", errorEncrypted: "The file is encrypted. Remove the password first.", errorParse: "Parsing failed.", errorSave: "Saving failed.",
@@ -154,6 +159,7 @@ const ja: ImportCopy = {
   warningTruncated: "長すぎるため、解析できた部分のみ保持しました。", warningTooLarge: "サイズ上限を超えたためスキップしました。",
   warningBlockedHtml: "安全でない HTML（スクリプト、iframe、スタイル、イベント属性）を削除しました。", warningRemoteBlocked: "remote画像はダウンロードせず、テキストのプレースホルダーにしました。",
   warningImageTooLarge: "画像が 10 MB を超えたため URL をプレースホルダーとして保持しました。", warningImageRejected: "画像ではないためスキップしました。", warningAssetMissing: "埋め込み画像が見つからなかったため、テキストのプレースホルダーにしました。", warningPathTraversal: "フォルダー外を指す相対パスは削除しました。",
+  warningSvgRejected: "安全にサニタイズできない内容を含む SVG のため、原本のみ保存し本文には埋め込みませんでした。", warningSvgSanitized: "SVG の安全でない要素や属性を削除し、サニタイズ済み画像を保存しました。",
   warningUnsupported: "未対応の形式のため、通常の添付として保存しました。", warningMammoth: "Word の一部を解析できませんでした：{detail}",
   warningMarkdownFallback: "Markdown エンジンがフォールバックし、書式が簡略化される場合があります。", warningTasksRecreated: "{count} 件のタスクを対応付けできず、新しい識別子を作成しました。",
   errorCorrupted: "ファイルが破損しており解析できません。", errorEncrypted: "ファイルが暗号化されています。パスワードを解除してください。", errorParse: "解析に失敗しました。", errorSave: "保存に失敗しました。",
@@ -177,6 +183,7 @@ const ko: ImportCopy = {
   warningTruncated: "문서가 길어서 분석된 부분만 보관했습니다.", warningTooLarge: "파일이 크기 제한을 넘어 건너뛰었습니다.",
   warningBlockedHtml: "부적절한 HTML(스크립트, iframe, 스타일, 이벤트 속성)을 제거했습니다.", warningRemoteBlocked: "웹 이미지는 다운로드하지 않고 텍스트 자리표시자로 바꿨습니다.",
   warningImageTooLarge: "이미지가 10MB를 넘어 URL을 자리표시자로 보관했습니다.", warningImageRejected: "이미지가 아니라 건너뛰었습니다.", warningAssetMissing: "삽입 이미지를 찾을 수 없어 텍스트 자리표시자로 바꿨습니다.", warningPathTraversal: "폴더 밖을 가리키는 상대 경로는 삭제했습니다.",
+  warningSvgRejected: "안전하게 정제할 수 없는 내용이 포함된 SVG라 원본만 보관하고 본문에는 삽입하지 않았습니다.", warningSvgSanitized: "SVG의 안전하지 않은 요소나 속성을 제거하고 정제된 본문 이미지를 저장했습니다.",
   warningUnsupported: "지원하지 않는 형식이므로 일반 첨부로 보관했습니다.", warningMammoth: "Word 내용의 일부를 분석할 수 없습니다: {detail}",
   warningMarkdownFallback: "Markdown 엔진이 대체 경로로 동작하여 서식이 단순화될 수 있습니다.", warningTasksRecreated: "{count}개 할 일을 대응하지 못해 새 식별자를 만들었습니다.",
   errorCorrupted: "파일이 손상되어 분석할 수 없습니다.", errorEncrypted: "파일이 암호화되어 있습니다. 먼저 비밀번호를 해제하세요.", errorParse: "분석에 실패했습니다.", errorSave: "저장에 실패했습니다.",
@@ -208,6 +215,8 @@ export function importWarningCopy(language: AppLanguage, code: string): string {
   if (code === "image-rejected") return copy.warningImageRejected;
   if (code === "asset-missing") return copy.warningAssetMissing;
   if (code === "path-traversal") return copy.warningPathTraversal;
+  if (code === "svg-rejected") return copy.warningSvgRejected;
+  if (code === "svg-sanitized") return copy.warningSvgSanitized;
   if (code.startsWith("mammoth:")) return copy.warningMammoth.replace("{detail}", code.slice("mammoth:".length).trim() || code);
   if (code === "unsupported") return copy.warningUnsupported;
   return code;

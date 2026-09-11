@@ -3,7 +3,7 @@ import type { AttachmentRecord } from "../types";
 import { attachmentRef, safeAssetName } from "./attachmentRefs";
 import { persistAttachment, removeStoredAttachment } from "./attachments";
 import { IMPORT_LIMITS } from "./importLimits";
-import { dataUrlToBlob } from "./utils";
+import { imageDataUrlToBlob, sanitizeSvg } from "./svgSanitize";
 
 export interface ClipboardImageInput {
   blob: Blob;
@@ -19,6 +19,7 @@ const MIME_EXTENSIONS: Record<string, string> = {
   "image/gif": "gif",
   "image/avif": "avif",
   "image/bmp": "bmp",
+  "image/svg+xml": "svg",
 };
 
 const EXTENSION_MIMES: Record<string, string> = Object.fromEntries(
@@ -41,19 +42,13 @@ function blobName(blob: Blob) {
 }
 
 function dataImageInput(src: string, alt = ""): ClipboardImageInput | null {
-  const match = String(src || "").match(/^data:(image\/(?:png|jpe?g|webp|gif|avif|bmp));base64,([a-z0-9+/=\s]+)$/i);
-  if (!match) return null;
-  const mime = normalizeClipboardMime(match[1], "");
+  const mime = normalizeClipboardMime(String(src || "").match(/^data:([^;,]+)/i)?.[1] || "", "");
   if (!mime) return null;
-  // Reject obviously oversized data URLs before atob allocates a large string.
-  if (match[2].replace(/\s/g, "").length > Math.ceil(IMPORT_LIMITS.mediaBytes * 4 / 3) + 16) return null;
-  try {
-    const blob = dataUrlToBlob(`data:${mime};base64,${match[2]}`);
-    if (blob.size > IMPORT_LIMITS.mediaBytes) return null;
-    return { blob, name: String(alt || "").trim(), mime };
-  } catch {
-    return null;
-  }
+  const blob = imageDataUrlToBlob(src);
+  if (!blob) return null;
+  const limit = mime === "image/svg+xml" ? IMPORT_LIMITS.svgBytes : IMPORT_LIMITS.mediaBytes;
+  if (blob.size > limit) return null;
+  return { blob, name: String(alt || "").trim(), mime };
 }
 
 function extractDataImagesFromHtml(html: string) {
@@ -122,14 +117,22 @@ export async function persistClipboardImages(inputs: ClipboardImageInput[]): Pro
   if (normalized.some((input) => !isSupportedClipboardImageMime(input.mime))) {
     throw new Error("clipboard-image-unsupported");
   }
-  if (normalized.some((input) => !Number.isFinite(input.blob.size) || input.blob.size > IMPORT_LIMITS.mediaBytes)) {
+  if (normalized.some((input) => {
+    const limit = input.mime === "image/svg+xml" ? IMPORT_LIMITS.svgBytes : IMPORT_LIMITS.mediaBytes;
+    return !Number.isFinite(input.blob.size) || input.blob.size > limit;
+  })) {
     throw new Error("clipboard-image-too-large");
   }
 
   const created: AttachmentRecord[] = [];
   try {
     for (const [index, input] of normalized.entries()) {
-      const blob = input.blob.type === input.mime ? input.blob : input.blob.slice(0, input.blob.size, input.mime);
+      let blob = input.blob.type === input.mime ? input.blob : input.blob.slice(0, input.blob.size, input.mime);
+      if (input.mime === "image/svg+xml") {
+        const sanitized = sanitizeSvg(await blob.text());
+        if (!sanitized) throw new Error("clipboard-svg-rejected");
+        blob = new Blob([sanitized.svg], { type: "image/svg+xml" });
+      }
       created.push(await persistAttachment(clipboardImageFileName(input, index), blob, input.mime, undefined, "inline"));
     }
     return created;

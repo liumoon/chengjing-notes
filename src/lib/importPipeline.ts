@@ -4,10 +4,11 @@ import { fromHtml, fromMarkdown, fromPlainText, plainTextFromHtml } from "./cont
 import { attachmentRef, safeAssetName } from "./attachmentRefs";
 import { findRemoteImages, sanitizeImportHtml } from "./htmlSanitize";
 import { downloadRemoteAssets, resolveLocalAssets } from "./documentBridge";
-import { checkSizeLimit, classifyDocument, IMPORT_LIMITS, type ImportFileKind } from "./importLimits";
+import { checkSizeLimit, classifyDocument, IMPORT_LIMITS, isSvgDocument, type ImportFileKind } from "./importLimits";
 import { getImportCopy, importWarningCopy } from "./importCopy";
-import { dataUrlToBlob } from "./utils";
 import { inferAttachmentMime, persistAttachment, removeStoredAttachment } from "./attachments";
+import { dataUrlToBlob } from "./utils";
+import { imageDataUrlToBlob, sanitizeSvg } from "./svgSanitize";
 
 /**
  * 一檔一卡的匯入交易。
@@ -74,7 +75,7 @@ function fail(name: string, kind: ImportFileKind, error: string, attachmentIds: 
 export async function scanDocument(input: ImportFileInput): Promise<{ kind: ImportFileKind; bytes: number; remoteImages: string[]; warnings: string[] }> {
   const kind = classifyDocument(input.name, input.blob.type);
   const warnings: string[] = [];
-  const verdict = checkSizeLimit(kind, input.blob.size);
+  const verdict = checkSizeLimit(kind, input.blob.size, input.name, input.blob.type);
   if (!verdict.allowed) return { kind, bytes: input.blob.size, remoteImages: [], warnings: ["too-large"] };
   let html = "";
   try {
@@ -87,7 +88,7 @@ export async function scanDocument(input: ImportFileInput): Promise<{ kind: Impo
 }
 
 async function markdownToRawHtml(input: ImportFileInput) {
-  const chunk = await fromMarkdown(await input.blob.text(), { allowRemoteImages: true });
+  const chunk = await fromMarkdown(await input.blob.text(), { allowRemoteImages: true, allowDataImages: true });
   return chunk.contentHtml;
 }
 
@@ -95,6 +96,12 @@ async function markdownToRawHtml(input: ImportFileInput) {
 async function storedBlob(input: ImportFileInput, attachment: AttachmentRecord, kind: ImportFileKind) {
   const current = input.blob.type === attachment.mime ? input.blob.slice(0, input.blob.size, attachment.mime) : input.blob;
   if (current.size > 0 || !input.sourcePath) return current;
+  if (kind === "image" && attachment.mime === "image/svg+xml") {
+    const { attachmentUrl } = await import("./attachments");
+    const response = await fetch(attachmentUrl(attachment));
+    if (!response.ok) throw new Error("source-content-unreadable");
+    return await response.blob();
+  }
   if (kind === "image" || kind === "audio" || kind === "video") return current;
   const { attachmentUrl } = await import("./attachments");
   const response = await fetch(attachmentUrl(attachment));
@@ -115,8 +122,14 @@ async function materializeImages(html: string, context: { sourcePath?: string; c
     const src = image.getAttribute("src") || "";
     if (src.startsWith("attachment://")) return;
     if (/^data:image\//i.test(src)) {
-      const blob = dataUrlToBlob(src);
-      if (blob.size > IMPORT_LIMITS.remoteImageBytes) {
+      const blob = imageDataUrlToBlob(src);
+      if (!blob) {
+        image.remove();
+        context.warnings.push("image-rejected");
+        return;
+      }
+      const limit = blob.type === "image/svg+xml" ? IMPORT_LIMITS.svgBytes : IMPORT_LIMITS.remoteImageBytes;
+      if (blob.size > limit) {
         image.removeAttribute("src");
         context.warnings.push("image-too-large");
         return;
@@ -150,24 +163,35 @@ async function materializeImages(html: string, context: { sourcePath?: string; c
     }
   });
 
-  const resolved = new Map<string, { data: string; mime?: string }>();
+  const resolved = new Map<string, { blob: Blob; mime?: string }>();
   const dataEntries = relativeNames.filter((name) => name.startsWith("data:"));
-  dataEntries.forEach((name) => resolved.set(name, { data: name.slice(name.indexOf(",") + 1), mime: (name.match(/^data:([^;,]+)/)?.[1] || "image/png") }));
+  dataEntries.forEach((name) => {
+    const blob = imageDataUrlToBlob(name);
+    if (blob) resolved.set(name, { blob, mime: blob.type });
+  });
   // 預設不連線：只有使用者在同意介面明確允許後，才會下載網路圖片。
   const httpEntries = context.allowRemoteImages ? relativeNames.filter((name) => /^https?:\/\//i.test(name)) : [];
   if (httpEntries.length) {
     const downloaded = await downloadRemoteAssets(httpEntries);
     for (const asset of downloaded) {
-      if (asset.ok && asset.data) resolved.set(asset.url, { data: asset.data, mime: asset.mime });
+      if (asset.ok && asset.data) {
+        const mime = asset.mime || "application/octet-stream";
+        const blob = dataUrlToBlob(`data:${mime};base64,${asset.data}`);
+        resolved.set(asset.url, { blob, mime });
+      }
       else context.warnings.push(asset.error === "too-large" ? "image-too-large" : "image-rejected");
     }
   }
-  const localEntries = relativeNames.filter((name) => !resolved.has(name) && !/^https?:\/\//i.test(name));
+  const localEntries = relativeNames.filter((name) => !resolved.has(name) && !/^https?:\/\//i.test(name) && !name.startsWith("data:"));
   if (localEntries.length) {
     const assets = await resolveLocalAssets(context.sourcePath || "", localEntries);
     assets.forEach((asset, index) => {
       const name = asset.name || localEntries[index];
-      if (asset.data) resolved.set(name, { data: asset.data, mime: asset.mime });
+      if (asset.data) {
+        const mime = asset.mime || (isSvgDocument(name) ? "image/svg+xml" : "application/octet-stream");
+        const blob = dataUrlToBlob(`data:${mime};base64,${asset.data}`);
+        resolved.set(name, { blob, mime });
+      }
       else context.warnings.push("asset-missing");
     });
   }
@@ -188,8 +212,26 @@ async function materializeImages(html: string, context: { sourcePath?: string; c
       else image.remove();
       continue;
     }
-    const bytes = Math.floor(entry.data.length * 0.75);
-    if (bytes > IMPORT_LIMITS.remoteImageBytes) {
+    let blob = entry.blob;
+    const mime = String(entry.mime || blob.type || "").toLowerCase();
+    if (!mime.startsWith("image/")) {
+      image.replaceWith(document.createTextNode(`[${image.getAttribute("alt") || copy.inlineImage}](${key})`));
+      context.warnings.push("image-rejected");
+      continue;
+    }
+    if (mime === "image/svg+xml") {
+      const sanitized = sanitizeSvg(await blob.text());
+      if (!sanitized) {
+        image.replaceWith(document.createTextNode(`[${image.getAttribute("alt") || copy.inlineImage}](${key})`));
+        context.warnings.push("svg-rejected");
+        continue;
+      }
+      if (sanitized.warnings.length) context.warnings.push("svg-sanitized");
+      blob = new Blob([sanitized.svg], { type: "image/svg+xml" });
+    }
+    const bytes = blob.size;
+    const perImageLimit = mime === "image/svg+xml" ? IMPORT_LIMITS.svgBytes : IMPORT_LIMITS.remoteImageBytes;
+    if (bytes > perImageLimit) {
       image.replaceWith(document.createTextNode(`[${image.getAttribute("alt") || copy.inlineImage}](${key})`));
       context.warnings.push("image-too-large");
       continue;
@@ -199,9 +241,9 @@ async function materializeImages(html: string, context: { sourcePath?: string; c
       context.warnings.push("image-too-large");
       continue;
     }
-    const mime = entry.mime && entry.mime.startsWith("image/") ? entry.mime : "image/png";
-    const name = safeAssetName(key.startsWith("data:") ? `image-${context.created.length}.${mime.split("/")[1] || "png"}` : key.split("/").pop() || `image-${context.created.length}`);
-    const attachment = await persistAttachment(name, dataUrlToBlob(`data:${mime};base64,${entry.data}`), mime, undefined, "inline");
+    const extension = mime === "image/svg+xml" ? "svg" : mime.split("/")[1] || "png";
+    const name = safeAssetName(key.startsWith("data:") ? `image-${context.created.length}.${extension}` : key.split("/").pop() || `image-${context.created.length}.${extension}`);
+    const attachment = await persistAttachment(name, blob, mime, undefined, "inline");
     context.created.push(attachment);
     totalBytes += bytes;
     image.setAttribute("src", attachmentRef(attachment.id));
@@ -256,7 +298,7 @@ async function parseDocument(input: ImportFileInput, blob: Blob, options: Import
     return { kind: "pdf", contentHtml: chunk.contentHtml, plainText: chunk.plainText, warnings, remoteImages: [], properties: { pages: parsed.pageCount } };
   }
   if (kind === "markdown") {
-    const chunk = await fromMarkdown(await blob.text(), { allowRemoteImages: true });
+    const chunk = await fromMarkdown(await blob.text(), { allowRemoteImages: true, allowDataImages: true });
     const remoteImages = allowRemoteImages ? [] : findRemoteImages(chunk.contentHtml);
     const materialized = await materializeImages(chunk.contentHtml, context);
     const normalized = await fromHtml(materialized.html, { allowRemoteImages: true, previousHtml: chunk.contentHtml });
@@ -318,7 +360,27 @@ async function parseDocument(input: ImportFileInput, blob: Blob, options: Import
     const chunk = fromPlainText(await blob.text());
     return { kind: "note", contentHtml: chunk.contentHtml, plainText: chunk.plainText, warnings, remoteImages: [], properties: { format: "TXT" } };
   }
-  if (kind === "image") return { kind: "image", contentHtml: `<p>${escapeHtml(input.name)}</p>`, plainText: input.name, warnings, remoteImages: [], properties: {} };
+  if (kind === "image") {
+    if (!isSvgDocument(input.name, blob.type)) {
+      return { kind: "image", contentHtml: `<p>${escapeHtml(input.name)}</p>`, plainText: input.name, warnings, remoteImages: [], properties: {} };
+    }
+    const sanitized = sanitizeSvg(await blob.text());
+    if (!sanitized) {
+      warnings.push("svg-rejected");
+      return { kind: "image", contentHtml: `<p>${escapeHtml(input.name)}</p>`, plainText: input.name, warnings, remoteImages: [], properties: {} };
+    }
+    if (sanitized.warnings.length) warnings.push("svg-sanitized");
+    const inline = await persistAttachment(
+      safeAssetName(input.name || `image-${created.length}.svg`),
+      new Blob([sanitized.svg], { type: "image/svg+xml" }),
+      "image/svg+xml",
+      undefined,
+      "inline",
+    );
+    created.push(inline);
+    const contentHtml = `<p><img src="${attachmentRef(inline.id)}" alt="${escapeHtml(input.name)}" data-attachment-id="${inline.id}"></p>`;
+    return { kind: "image", contentHtml, plainText: input.name, warnings, remoteImages: [], properties: {} };
+  }
   if (kind === "audio") return { kind: "audio", contentHtml: `<p>${escapeHtml(input.name)}</p>`, plainText: input.name, warnings, remoteImages: [], properties: {} };
   if (kind === "video") return { kind: "video", contentHtml: `<p>${escapeHtml(input.name)}</p>`, plainText: input.name, warnings, remoteImages: [], properties: {} };
   warnings.push("unsupported");
@@ -329,7 +391,7 @@ async function parseDocument(input: ImportFileInput, blob: Blob, options: Import
 export async function importDocument(input: ImportFileInput, options: ImportOptions, index = 0, total = 1): Promise<ImportOutcome> {
   const kind = classifyDocument(input.name, input.blob.type);
   const copy = getImportCopy(options.language);
-  const verdict = checkSizeLimit(kind, input.blob.size);
+  const verdict = checkSizeLimit(kind, input.blob.size, input.name, input.blob.type);
   if (!verdict.allowed) {
     options.onProgress?.({ index, total, name: input.name, stage: "failed" });
     return fail(input.name, kind, copy.warningTooLarge, [], ["too-large"]);

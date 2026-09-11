@@ -9,7 +9,10 @@ function base64FromDataUrl(value: string) {
 
 export function attachmentUrl(attachment: AttachmentRecord) {
   if (attachment.storage === "file" && attachment.relativePath) {
-    if (window.chengjing?.platform === "android") return `https://appassets.androidplatform.net/attachments/${encodeURIComponent(attachment.relativePath)}`;
+    if (window.chengjing?.platform === "android") {
+      const mimeHint = attachment.mime === "image/svg+xml" ? `?mime=${encodeURIComponent(attachment.mime)}` : "";
+      return `https://appassets.androidplatform.net/attachments/${encodeURIComponent(attachment.relativePath)}${mimeHint}`;
+    }
     return `chengjing-attachment://local/${encodeURIComponent(attachment.relativePath)}`;
   }
   return attachment.blob ? URL.createObjectURL(attachment.blob) : "";

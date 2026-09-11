@@ -124,7 +124,8 @@ function BoardAttachmentPreview({ attachmentId }: { attachmentId: string }) {
     return () => { if (next && shouldRevokeAttachmentUrl(attachment)) URL.revokeObjectURL(next); };
   }, [attachment]);
   if (!attachment) return null;
-  if (attachment.mime.startsWith("image/") && url) return <div className="flow-card-media is-image"><img src={url} alt={attachment.name} /></div>;
+  // Imported source SVGs are retained for download, but never rendered directly.
+  if (attachment.mime.startsWith("image/") && !(attachment.role === "source" && attachment.mime === "image/svg+xml") && url) return <div className="flow-card-media is-image"><img src={url} alt={attachment.name} /></div>;
   if (attachment.mime.startsWith("video/") && url) return <div className="flow-card-media is-video"><video src={url} muted preload="metadata" aria-label={attachment.name} /></div>;
   const Icon = attachment.mime === "application/pdf" ? FileText : attachment.mime.startsWith("audio/") ? Music2 : attachment.mime.startsWith("video/") ? Video : Paperclip;
   return <div className="flow-card-file"><Icon size={18} /><span>{attachment.name}</span><small>{Math.max(1, Math.round(attachment.size / 1024))} KB</small></div>;
@@ -616,7 +617,7 @@ function BoardCanvas({ boardId, focusNodeId, onFocusConsumed }: { boardId: strin
         multiple: true,
         metadataOnly: true,
         filters: [
-          { name: t("import.supported"), extensions: ["pdf", "md", "txt", "html", "docx", "png", "jpg", "jpeg", "webp", "gif", "mp3", "m4a", "wav", "ogg", "flac", "mp4", "mov", "webm", "mkv"] },
+          { name: t("import.supported"), extensions: ["pdf", "md", "txt", "html", "docx", "png", "jpg", "jpeg", "webp", "gif", "svg", "mp3", "m4a", "wav", "ogg", "flac", "mp4", "mov", "webm", "mkv"] },
           { name: t("import.allFiles"), extensions: ["*"] },
         ],
       });

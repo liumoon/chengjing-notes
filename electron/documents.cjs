@@ -20,12 +20,24 @@ const LIMITS = {
   docxBytes: 50 * 1024 * 1024,
   pdfBytes: 100 * 1024 * 1024,
   mediaBytes: 200 * 1024 * 1024,
+  svgBytes: 10 * 1024 * 1024,
   remoteImageBytes: 10 * 1024 * 1024,
   remoteTotalBytesPerDocument: 50 * 1024 * 1024,
   remoteTimeoutMs: 15_000,
   maxRedirects: 5,
   maxRemoteImagesPerDocument: 40,
 };
+
+function isSvgBuffer(buffer) {
+  if (!buffer || buffer.length === 0 || buffer.length > LIMITS.svgBytes) return false;
+  const source = buffer.toString("utf8").replace(/^\uFEFF/, "");
+  if (/<\s*!doctype\b|<\s*!entity\b|<!\[cdata\[/i.test(source)) return false;
+  const withoutProlog = source
+    .replace(/^\s*<\?xml\b[^?]*\?>\s*/i, "")
+    .replace(/^(?:<!--[\s\S]*?-->\s*)+/i, "")
+    .trim();
+  return /^<svg(?:\s|\/?>)/i.test(withoutProlog) && /(?:\/>|<\/svg>)\s*$/i.test(withoutProlog);
+}
 
 // detectMime 只依魔法檔頭辨別圖片（內容優先於副檔名，避免類型混淆攻擊）；
 // 本地附件與遠端下載都以圖片為對象， unrecognized 內容回傳空字串，
@@ -37,6 +49,7 @@ function detectMime(_name, buffer) {
   if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38) return "image/gif";
   if (buffer[0] === 0x42 && buffer[1] === 0x4d) return "image/bmp";
   if (buffer[0] === 0x46 && buffer[1] === 0x4f && buffer[2] === 0x57 && buffer[3] === 0x50) return "image/webp";
+  if (isSvgBuffer(buffer)) return "image/svg+xml";
   return "";
 }
 
