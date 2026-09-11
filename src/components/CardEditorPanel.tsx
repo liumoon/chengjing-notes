@@ -35,6 +35,8 @@ import { TagPicker } from "./TagPicker";
 import { KnowledgeGroupPicker } from "./KnowledgeGroupPicker";
 import { getCardPropertyCopy } from "../lib/cardPropertyCopy";
 import { attachmentUrl, removeStoredAttachment, shouldRevokeAttachmentUrl } from "../lib/attachments";
+import { persistInlineClipboardImages, rollbackInlineClipboardImages } from "../lib/clipboardImages";
+import type { ClipboardImageInput } from "../lib/clipboardImages";
 import { searchQueryTerms } from "../lib/searchIndex";
 import { isMaterializedCard } from "../lib/journalVisibility";
 
@@ -222,7 +224,7 @@ export function CardEditorPanel() {
           </div>
           {headerAttachments.map((attachment) => <AttachmentPreview key={attachment.id} attachment={attachment} downloadLabel={t("card.download", { name: attachment.name })} onRemove={() => detachAttachment(attachment)} />)}
           {card.sourceUrl && <a className="source-link" href={card.sourceUrl} target="_blank" rel="noreferrer"><ArrowUpRight size={14} /><span>{t("card.source")}</span><code>{new URL(card.sourceUrl).hostname}</code></a>}
-          <CardContentEditor contentHtml={card.contentHtml} onChange={(contentHtml, plainText) => update({ contentHtml, plainText })} onHighlight={createHighlight} taskOwnerId={card.id} attachments={attachments} />
+          <CardContentEditor contentHtml={card.contentHtml} onChange={(contentHtml, plainText) => update({ contentHtml, plainText })} onHighlight={createHighlight} taskOwnerId={card.id} attachments={attachments} onPasteImages={(inputs: ClipboardImageInput[]) => persistInlineClipboardImages(activeCard.id, inputs)} onPasteImagesRollback={(saved) => rollbackInlineClipboardImages(activeCard.id, saved)} />
         </div>
       ) : (
         <div className="card-info-panel">

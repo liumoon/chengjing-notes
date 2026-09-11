@@ -10,6 +10,8 @@ import { TaskDatePicker } from "../components/TaskDatePicker";
 import { showContextMenuFromPointer } from "../lib/contextMenu";
 import { useI18n } from "../hooks/useI18n";
 import { setTaskDone } from "../lib/taskSync";
+import { persistInlineClipboardImages, rollbackInlineClipboardImages } from "../lib/clipboardImages";
+import type { AttachmentRecord } from "../types";
 
 export function JournalView() {
   const journalDate = useAppStore((state) => state.journalDate);
@@ -19,6 +21,10 @@ export function JournalView() {
   const [highlightNotice, setHighlightNotice] = useState("");
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const journal = useLiveQuery(() => journalId ? db.cards.get(journalId) : undefined, [journalId]);
+  const attachments = useLiveQuery(async () => {
+    if (!journal) return [];
+    return (await Promise.all((journal.attachmentIds || []).map((id) => db.attachments.get(id)))).filter(Boolean) as AttachmentRecord[];
+  }, [journal?.id, journal?.attachmentIds?.join("|")], []);
   const tasks = useLiveQuery(() => db.tasks.orderBy("dueAt").filter((task) => !task.done && !task.parentTaskId).limit(6).toArray(), [], []);
   const { dayjsLocale, intlLocale, t } = useI18n();
 
@@ -89,6 +95,9 @@ export function JournalView() {
             onHighlight={createJournalHighlight}
             taskOwnerId={journal.id}
             placeholder={t("journal.placeholder")}
+            attachments={attachments}
+            onPasteImages={(inputs) => persistInlineClipboardImages(currentJournalId, inputs)}
+            onPasteImagesRollback={(saved) => rollbackInlineClipboardImages(currentJournalId, saved)}
           />
         </article>
       </section>

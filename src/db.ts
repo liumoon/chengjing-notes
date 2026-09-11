@@ -566,6 +566,11 @@ export async function touchBoard(boardId: string) {
 
 export async function updateCardWithHistory(cardId: string, patch: Partial<CardRecord>) {
   return db.transaction("rw", [db.cards, db.cardVersions], async () => {
+    return updateCardWithHistoryInTransaction(cardId, patch);
+  });
+}
+
+async function updateCardWithHistoryInTransaction(cardId: string, patch: Partial<CardRecord>) {
   const current = await db.cards.get(cardId);
   if (!current) return 0;
   const versions = await db.cardVersions.where("cardId").equals(cardId).toArray();
@@ -585,6 +590,23 @@ export async function updateCardWithHistory(cardId: string, patch: Partial<CardR
   const result = await db.cards.update(cardId, { ...patch, updatedAt: Math.max(Date.now(), current.updatedAt + 1) });
   if (versionAdded) await pruneCardVersions(cardId);
   return result;
+}
+
+/**
+ * Append attachments inside the same transaction that reads the card.
+ * Clipboard pastes can resolve concurrently; calculating the next list
+ * outside the transaction would allow one paste to overwrite another.
+ */
+export async function appendCardAttachmentsWithHistory(cardId: string, attachmentIds: string[]) {
+  const additions = [...new Set(attachmentIds.filter(Boolean))];
+  if (!additions.length) return 0;
+  return db.transaction("rw", [db.cards, db.cardVersions], async () => {
+    const current = await db.cards.get(cardId);
+    if (!current) return 0;
+    const currentAttachmentIds = current.attachmentIds || [];
+    const nextAttachmentIds = [...new Set([...currentAttachmentIds, ...additions])];
+    if (nextAttachmentIds.length === currentAttachmentIds.length) return 1;
+    return updateCardWithHistoryInTransaction(cardId, { attachmentIds: nextAttachmentIds });
   });
 }
 
