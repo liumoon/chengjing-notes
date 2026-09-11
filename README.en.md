@@ -199,10 +199,10 @@ The model is approximately 2.9–3.2 GB. After the first download, it can run of
 
 1. Open Settings and choose Custom AI provider.
 2. Expand the advanced panel and choose either the broadly compatible Chat Completions mode or the newer Responses API mode. For Ollama, keep `http://127.0.0.1:11434/v1` and enter an installed model ID such as `qwen3:8b`.
-3. For a custom gateway, choose OpenAI-compatible gateway and enter its HTTPS API URL, model ID, and optional API key.
+3. For a custom gateway, choose OpenAI-compatible gateway and enter its HTTPS API URL, or an HTTP URL on localhost/private LAN IPs, plus the model ID and optional API key.
 4. Save the connection, optionally fetch models or test it, then make it active.
 
-ChengJing uses the OpenAI-compatible `/models` endpoint and calls either `/chat/completions` or `/responses` for generation. Remote Responses requests always use `store: false`; Ollama receives the necessary history without server-side conversation IDs. Remote services require HTTPS; local HTTP accepts only `localhost`, `127.0.0.1`, or `::1`. Keys stay encrypted on this computer and are excluded from backups.
+ChengJing uses the OpenAI-compatible `/models` endpoint and calls either `/chat/completions` or `/responses` for generation. Remote Responses requests always use `store: false`; Ollama receives the necessary history without server-side conversation IDs. Remote services require HTTPS; HTTP accepts only localhost, loopback, RFC1918 private ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), or IPv6 ULA. Keys stay encrypted on this computer and are excluded from backups.
 
 ### Codex / Claude Code MCP
 

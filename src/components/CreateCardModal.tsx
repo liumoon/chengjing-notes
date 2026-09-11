@@ -4,7 +4,8 @@ import { Feather, FileStack, FileText, Globe2, Image, LayoutDashboard, Link2, Lo
 import { useLiveQuery } from "dexie-react-hooks";
 import { createCard, createFragment, db, moveCardToKnowledgeGroup, touchBoard } from "../db";
 import { useI18n } from "../hooks/useI18n";
-import { importFile, importWebUrl } from "../lib/importers";
+import { importWebUrl } from "../lib/importers";
+import { importDocuments } from "../lib/importPipeline";
 import { useAppStore } from "../store";
 import { KnowledgeGroupPicker } from "./KnowledgeGroupPicker";
 import { dataUrlToBlob } from "../lib/utils";
@@ -12,7 +13,7 @@ import { dataUrlToBlob } from "../lib/utils";
 type CreateMode = "note" | "web" | "file";
 
 export function CreateCardModal() {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const open = useAppStore((state) => state.createCardOpen);
   const parentView = useAppStore((state) => state.view);
   const defaultDestination = window.chengjing?.platform==="android" && ["library","database"].includes(parentView) ? "library" : "fragment";
@@ -86,15 +87,20 @@ export function CreateCardModal() {
     try {
       const result = await window.chengjing.files.open({ title: t("import.dialogTitle"), multiple: true, metadataOnly: true, filters: [{ name: t("import.supported"), extensions: ["pdf", "md", "txt", "html", "docx", "png", "jpg", "jpeg", "webp", "gif", "mp3", "m4a", "wav", "ogg", "flac", "mp4", "mov", "webm", "mkv"] }, { name: t("import.allFiles"), extensions: ["*"] }] });
       if (result.canceled) { setBusy(false); return; }
-      const imported = [];
-      for (const file of result.files) {
-        setStatus(t("import.importingFile", { name: file.name }));
-        const source = window.chengjing?.attachments ? new Blob([], { type: "application/octet-stream" }) : dataUrlToBlob(`data:application/octet-stream;base64,${file.data}`);
-        const card = await importFile(file.name, source, file.path);
-        await organizeCard(card.id);
-        imported.push(card);
-      }
-      if (imported[0]) resetAndClose(imported[0].id); else setBusy(false);
+      // 統一走共用的匯入管線：一檔一卡、保留原檔、逐檔進度與部分成功。
+      const inputs = result.files.map((file) => ({
+        name: file.name,
+        blob: file.data ? dataUrlToBlob(`data:application/octet-stream;base64,${file.data}`) : new Blob([], { type: "application/octet-stream" }),
+        sourcePath: file.path,
+      }));
+      const batch = await importDocuments(inputs, {
+        language,
+        onProgress: (progress) => setStatus(t("import.importingFile", { name: progress.name })),
+      });
+      for (const card of batch.cards) await organizeCard(card.id);
+      if (batch.cards[0]) resetAndClose(batch.cards[0].id);
+      else setStatus(batch.failed ? t("import.filesFailed") : t("import.readingFiles"));
+      setBusy(false);
     } catch (error) { setStatus(error instanceof Error ? error.message : t("import.filesFailed")); setBusy(false); }
   }
 

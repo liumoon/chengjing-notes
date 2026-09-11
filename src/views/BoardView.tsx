@@ -71,7 +71,7 @@ import { dataUrlToBlob, localizedKindLabel, truncate } from "../lib/utils";
 import { boardPreviewBlocks, normalizeBoardPlainText } from "../lib/boardContent";
 import { appendBoardSnapshot, boardHistoryTarget, boardSnapshotKey, createBoardSnapshot, type BoardHistoryState } from "../lib/boardHistory";
 import { getBoardPolishCopy } from "../lib/boardPolishCopy";
-import { importFile } from "../lib/importers";
+import { importDocuments } from "../lib/importPipeline";
 import { duplicateCardFromId, readAppClipboard, writeAppClipboard } from "../lib/appClipboard";
 import { attachmentUrl, shouldRevokeAttachmentUrl } from "../lib/attachments";
 import { searchQueryTerms } from "../lib/searchIndex";
@@ -623,9 +623,13 @@ function BoardCanvas({ boardId, focusNodeId, onFocusConsumed }: { boardId: strin
       if (result.canceled || !result.files.length) return;
       const center = flow?.screenToFlowPosition({ x: window.innerWidth * 0.55, y: window.innerHeight * 0.48 }) || { x: 360, y: 240 };
       const records: BoardNodeRecord[] = [];
-      for (const [index, file] of result.files.entries()) {
-        const source = window.chengjing?.attachments ? new Blob([], { type: "application/octet-stream" }) : dataUrlToBlob(`data:application/octet-stream;base64,${file.data}`);
-        const card = await importFile(file.name, source, file.path);
+      // 白板匯入與「匯入」視窗共用同一條管線，行為與警告不會分岔。
+      const batch = await importDocuments(result.files.map((file) => ({
+        name: file.name,
+        blob: file.data ? dataUrlToBlob(`data:application/octet-stream;base64,${file.data}`) : new Blob([], { type: "application/octet-stream" }),
+        sourcePath: file.path,
+      })), { language });
+      for (const [index, card] of batch.cards.entries()) {
         await db.cards.update(card.id, { state: "active", updatedAt: Date.now() });
         const attachment = Boolean(card.attachmentIds.length);
         const width = attachment ? 360 : 285;
@@ -639,7 +643,8 @@ function BoardCanvas({ boardId, focusNodeId, onFocusConsumed }: { boardId: strin
       }
       await db.boardNodes.bulkAdd(records);
       await touchBoard(boardId);
-      showStatus("success", historyCopy.filesAdded.replace("{count}", String(records.length)));
+      if (batch.failed) showStatus("info", `${historyCopy.filesAdded.replace("{count}", String(records.length))} · ${batch.failed}`);
+      else showStatus("success", historyCopy.filesAdded.replace("{count}", String(records.length)));
       window.setTimeout(() => {
         const left = Math.min(...records.map((record) => record.x));
         const top = Math.min(...records.map((record) => record.y));

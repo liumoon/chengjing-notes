@@ -36,15 +36,21 @@ class MainActivity : ComponentActivity() {
     private var saveRequest: JSONObject? = null
     private var metadataOnly = true
     private var pickingBackupFolder = false
+    private var pickingAssetFolder = false
     private val picker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val callback = fileReply; fileReply = null
-        if (result.resultCode != RESULT_OK) { pickingBackupFolder=false;saveRequest=null;callback?.invoke(JSONObject().put("canceled", true).put("files", JSONArray()), null) }
+        if (result.resultCode != RESULT_OK) { pickingBackupFolder=false;pickingAssetFolder=false;saveRequest=null;callback?.invoke(JSONObject().put("canceled", true).put("files", JSONArray()), null) }
         else executor.execute {
             try {
                 val intent = result.data!!
                 val uri = intent.data
                 val save = saveRequest; saveRequest = null
-                if(pickingBackupFolder && uri!=null) {
+                if (pickingAssetFolder && uri != null) {
+                    pickingAssetFolder = false
+                    // 只要求一次讀取授權；之後卡片裡的相對圖片都從這個資料夾解析。
+                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                    callback?.invoke(services.call("documents.setAssetFolder", JSONObject().put("rootUri", uri.toString())), null)
+                } else if(pickingBackupFolder && uri!=null) {
                     pickingBackupFolder=false
                     contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
                     val settings=services.call("backup.update",JSONObject().put("enabled",true).put("directory",uri.toString()))
@@ -163,6 +169,13 @@ class MainActivity : ComponentActivity() {
                         val controller=androidx.core.view.WindowInsetsControllerCompat(window,web)
                         controller.isAppearanceLightStatusBars=!args.optBoolean("dark");controller.isAppearanceLightNavigationBars=!args.optBoolean("dark")
                         reply(JSONObject(),null)
+                    }
+                    "documents.pickAssetFolder" -> runOnUiThread {
+                        if (fileReply != null) reply(null, "Another file chooser is open") else {
+                            fileReply = reply
+                            pickingAssetFolder = true
+                            picker.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION))
+                        }
                     }
                     "files.open", "files.save" -> runOnUiThread {
                         if (fileReply != null) reply(null, "Another file chooser is open") else {

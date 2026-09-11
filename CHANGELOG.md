@@ -1,5 +1,17 @@
 # 更新紀錄
 
+## Unreleased — Markdown 雙模式與文件匯入強化
+
+- 卡片編輯器新增「富文字／Markdown」雙模式：兩種模式是同一份 TipTap 文件的投影，只保存 `contentHtml`，往復切換維持標題、清單、表格、程式碼與核取清單的語意；核取清單以文字、階層與位置比對既有 `data-task-id`，已同步待辦不會被重建。Markdown 模式為等寬文字框，支援 Tab 縮排、卡內搜尋、IME 組字、420ms 自動儲存與關閉前 flush，並在本機記住上次的模式選擇。
+- 新增集中式內容管線（`contentPipeline`）：`fromMarkdown`／`fromHtml`／`fromPlainText`／`toMarkdown`／`appendContent` 統一產出 `contentHtml` 與 `plainText`，RichEditor、日誌、AI 動作、MCP、白板與匯入器不再各自拼接 HTML。TipTap Markdown 引擎以固定版本包住，只有 `markdownBridge` 允許直接 import。
+- 文件匯入改為一檔一卡的獨立交易：MD、TXT、HTML、DOCX、PDF 各自解析、失敗只回收該檔的來源與內嵌附件，批次可部分成功並保留逐檔結果與開卡入口；超過大小上限（文字 20 MB、DOCX 50 MB、PDF 100 MB）的檔案不建立半成品卡片。
+- Markdown／HTML 中的相对圖片與 data URL 圖片轉為 `role: "inline"` 附件，正文以 `attachment://<id>` 表示；網路圖片先列出來源網域徵求同意，預設不連線，未下載者保留 alt 與網址的文字占位，不留會發請求的追蹤圖片。找不到來源資料夾的相對圖片顯示占位而不是破圖。
+- 桌面與 Android 新增 `documents.resolveLocalAssets`／`documents.downloadRemoteAssets` 橋接：桌面只讀取來源文件所在資料夾並擋掉路徑穿越；Android 以 Storage Access Framework 讓使用者一次授權資源資料夾，持久化讀取權限，重啟後仍可用；遠端下載逐次檢查重新導向、私有位址、MIME 魔法檔頭與大小上限。
+- 新增單一卡片「匯出 Markdown」：無圖片輸出 `.md`，有圖片輸出含 `assets/` 的 ZIP；全庫 Markdown 備份改用真正的 TipTap Markdown serializer，不再以 `plainText` 代替格式。附件新增可選 `role` 欄位，JSON 備份與同步協定保持相容，無需破壞性遷移。
+- 匯入與雙模式的進度、同意、警告與失敗文案提供繁中、簡中、英、日、韓五語，並新增文案完整性測試。
+- 測試：新增固定 DOCX／HTML／PDF fixture 的匯入測試、安全測試（script、`onerror`、`javascript:`、私有 IP、路徑穿越）、核取清單 ID 往返測試與五語文案測試。
+- 自訂 AI Provider 的 HTTP 連線放寬至 localhost、loopback、RFC1918 私有網段與 IPv6 ULA；Android 同步允許私有區域網路 HTTP，仍拒絕公開網路的 HTTP Provider。
+
 ## 0.9.5 — 2026-09-06
 
 - Google 雲端在資料修改後停筆 30 秒備份；閱讀、滑動和點擊不再阻止備份。持續編輯時仍按設定間隔備份。

@@ -3,12 +3,19 @@ const test = require("node:test");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { normalizeBaseUrl, providerProfileWithSecret, readProviderSettings, removeProviderProfile, selectProviderProfile, upsertProviderProfile } = require("./provider-settings.cjs");
+const { isPrivateNetworkHostname, normalizeBaseUrl, providerProfileWithSecret, readProviderSettings, removeProviderProfile, selectProviderProfile, upsertProviderProfile } = require("./provider-settings.cjs");
 
-test("進階 Provider 只允許 HTTPS 遠端或 loopback HTTP", () => {
+test("進階 Provider 允許 HTTPS 遠端或私有網段 HTTP", () => {
   assert.equal(normalizeBaseUrl("http://127.0.0.1:11434/v1/", "ollama"), "http://127.0.0.1:11434/v1");
+  assert.equal(normalizeBaseUrl("http://10.0.10.60:8443/v1"), "http://10.0.10.60:8443/v1");
+  assert.equal(normalizeBaseUrl("http://172.16.20.5:8080/v1"), "http://172.16.20.5:8080/v1");
+  assert.equal(normalizeBaseUrl("http://192.168.1.20:1234/v1"), "http://192.168.1.20:1234/v1");
   assert.equal(normalizeBaseUrl("https://gateway.example.com/v1/"), "https://gateway.example.com/v1");
   assert.throws(() => normalizeBaseUrl("http://gateway.example.com/v1"), /provider-insecure-remote-url/);
+  assert.throws(() => normalizeBaseUrl("http://8.8.8.8/v1"), /provider-insecure-remote-url/);
+  assert.equal(isPrivateNetworkHostname("127.0.0.2"), true);
+  assert.equal(isPrivateNetworkHostname("fd00::1"), true);
+  assert.equal(isPrivateNetworkHostname("172.32.0.1"), false);
   assert.throws(() => normalizeBaseUrl("file:///tmp/provider"), /provider-base-url-invalid/);
 });
 

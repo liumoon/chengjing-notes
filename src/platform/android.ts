@@ -74,6 +74,11 @@ export async function initializeAndroid() {
       cleanup: (keep) => androidCall("attachments.sweepPending", { keep }),
       restoreFromBackup: (request) => androidCall("attachments.restoreFromBackup", request),
     },
+    documents: {
+      resolveLocalAssets: (request) => androidCall("documents.resolveLocalAssets", request),
+      pickAssetFolder: () => androidCall("documents.pickAssetFolder", {}),
+      downloadRemoteAssets: (request) => androidCall("documents.downloadRemoteAssets", request),
+    },
     clipboard: { write: (request) => androidCall("clipboard.write", request), read: () => androidCall("clipboard.read") },
     web: { read: async (url) => {
       const result = await androidCall<{ html: string }>("web.fetch", { url });

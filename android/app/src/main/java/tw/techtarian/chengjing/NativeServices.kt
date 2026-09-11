@@ -22,17 +22,27 @@ import java.time.ZoneOffset
 import androidx.documentfile.provider.DocumentFile
 
 class NativeServices(private val context: Context, private val backupApp: String = "chengjing-cloud-backup-v1", stateName: String = "settings", private val clock: () -> Long = { System.currentTimeMillis() }) {
-    companion object { private val syncUploadLock = Any() }
+    companion object {
+        private val syncUploadLock = Any()
+        const val REMOTE_IMAGE_BYTES = 10L * 1024 * 1024
+        const val REMOTE_TOTAL_BYTES = 50L * 1024 * 1024
+        const val REMOTE_TIMEOUT_MS = 15_000L
+        const val MAX_REDIRECTS = 5
+    }
     val store = SecureStore(context)
     private val inference by lazy { LocalInference(context) }
     private val prefs = context.getSharedPreferences(stateName, Context.MODE_PRIVATE)
+    private val docPrefs = context.getSharedPreferences("documents", Context.MODE_PRIVATE)
     private val files = File(context.filesDir, "attachments").apply { mkdirs() }
     private val http by lazy { OkHttpClient.Builder().callTimeout(180, TimeUnit.SECONDS).followRedirects(false).build() }
     private fun objectValue(key: String, fallback: String = "{}") = JSONObject(prefs.getString(key, fallback)!!)
     private fun save(key: String, value: JSONObject): JSONObject { check(prefs.edit().putString(key, value.toString()).commit()); return value }
     fun safeFile(name: String): File { val file = File(files, name).canonicalFile; require(file.parentFile == files.canonicalFile) { "Invalid attachment path" }; return file }
     private fun json(url: String, method: String = "GET", body: JSONObject? = null, secret: String = ""): JSONObject {
-        require(Uri.parse(url).scheme == "https" || Uri.parse(url).host in listOf("localhost", "127.0.0.1", "10.0.2.2")) { "Use an HTTPS Gateway for this connection" }
+        val parsed = Uri.parse(url)
+        val scheme = parsed.scheme?.lowercase()
+        val host = parsed.host ?: ""
+        require(scheme == "https" || (scheme == "http" && host.isNotEmpty() && isPrivateAddress(host))) { "Use HTTPS or a private LAN address for this connection" }
         val builder = Request.Builder().url(url).method(method, if (method == "GET") null else (body?.toString() ?: "").toRequestBody("application/json".toMediaType()))
         if (secret.isNotEmpty()) builder.header("Authorization", "Bearer $secret")
         http.newCall(builder.build()).execute().use { response ->
@@ -73,6 +83,201 @@ class NativeServices(private val context: Context, private val backupApp: String
     }
     private fun providers() = objectValue("providers", "{\"selectedProfileId\":\"\",\"profiles\":[]}")
     private fun profile(id: String): JSONObject { val settings=providers(); val profiles=settings.getJSONArray("profiles"); return (0 until profiles.length()).map { profiles.getJSONObject(it) }.first { it.getString("id")==id.ifEmpty { settings.getString("selectedProfileId") } } }
+    // ---- 文件匯入附件橋接：解析來源資料夾與下載公開圖片 ------------------------
+    private fun documentTreeUri(): String? = docPrefs.getString("root", null)
+    private fun setDocumentTreeUri(uri: String) { check(docPrefs.edit().putString("root", uri).apply()) }
+
+    /** 解析十進位／八進位／十六進位寫法的 IPv4，避免繞過私有網段檢查。 */
+    private fun normalizeIpv4(host: String): IntArray? {
+        var value = host.trim().lowercase()
+        if (value.startsWith("[") && value.endsWith("]")) value = value.substring(1, value.length - 1)
+        val mapped = Regex("::ffff:([0-9.]+)$").find(value)
+        if (mapped != null) return normalizeIpv4(mapped.groupValues[1])
+        val labels = value.split(".")
+        if (labels.size < 1 || labels.size > 4) return null
+        val parts = ArrayList<Long>()
+        for (label in labels) {
+            if (label.isEmpty()) return null
+            val number: Long = when {
+                Regex("^0x[0-9a-f]+$").test(label) -> label.substring(2).toLong(16)
+                Regex("^0[0-7]+$").test(label) -> label.substring(1).toLong(8)
+                Regex("^\\d+$").test(label) -> label.toLong()
+                else -> return null
+            }
+            if (labels.size == 1) { if (number < 0L || number > 0xffffffffL) return null } else if (number > 255L) return null
+            parts.add(number)
+        }
+        if (parts.size == 1) {
+            val total = parts[0]
+            return IntArray(4) { ((total shr (24 - 8 * it)) and 0xff).toInt() }
+        }
+        return IntArray(4) { index -> when (index) { 0 -> parts[0].toInt(); 1 -> parts[1].toInt(); 2 -> parts[2].toInt(); else -> parts[3].toInt() } }
+    }
+
+    /** loopback、私有網段、連結本地、雲中 metadata 一律視為不安全。 */
+    private fun isPrivateAddress(address: String): Boolean {
+        val host = address.lowercase().removeSuffix(".")
+        if (host.isEmpty()) return true
+        if (host == "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) return true
+        if (host == "metadata" || host == "metadata.google.internal" || host == "metadata.goog") return true
+        val v4 = normalizeIpv4(host)
+        if (v4 != null) {
+            val a = v4[0]; val b = v4[1]
+            if (a == 0 || a == 10 || a == 127) return true
+            if (a == 169 && b == 254) return true
+            if (a == 172 && b in 16..31) return true
+            if (a == 192 && b == 168) return true
+            if (a == 198 && (b == 18 || b == 19)) return true
+            if (a >= 224) return true
+            if (a == 100 && b in 64..127) return true
+            return false
+        }
+        if (host.contains(":")) {
+            if (host == "::" || host == "::1") return true
+            if (host.startsWith("fc") || host.startsWith("fd")) return true
+            if (host.startsWith("fe80") || host.startsWith("fe9") || host.startsWith("fea") || host.startsWith("feb")) return true
+            if (host.startsWith("ff")) return true
+            val mapped = Regex("::ffff:([0-9.]+)$").find(host)
+            if (mapped != null) return isPrivateAddress(mapped.groupValues[1])
+            return false
+        }
+        return false
+    }
+
+    private fun isHttpUrl(value: String): Boolean = try {
+        val scheme = java.net.URI(value).scheme; scheme == "http" || scheme == "https"
+    } catch (_: Exception) { false }
+
+    private fun hasPathTraversal(value: String): Boolean = try {
+        val raw = java.net.URLDecoder.decode(value.split("?")[0].split("#")[0], "UTF-8")
+        raw.split("/").any { it == ".." }
+    } catch (_: Exception) { false }
+
+    /** 與渲染端 `assertPublicImageUrl` 一致的遠端圖片准入檢查。 */
+    private fun assertPublicImageUrl(value: String): String {
+        if (!isHttpUrl(value)) return "unsupported-scheme"
+        val uri = try { java.net.URI(value) } catch (_: Exception) { return "unsupported-scheme" }
+        if (uri.username != null || uri.password != null) return "credentials-in-url"
+        if (isPrivateAddress(uri.host ?: "")) return "private-address"
+        if (hasPathTraversal(value)) return "path-traversal"
+        val path = try { java.net.URLDecoder.decode(uri.path ?: "", "UTF-8") } catch (_: Exception) { uri.path ?: "" }
+        if (path.contains('\u0000')) return "null-byte"
+        return ""
+    }
+
+    /** 只依魔法檔頭辨別圖片（內容優先於副檔名，避免類型混淆攻擊）。 */
+    private fun detectMime(buffer: ByteArray): String {
+        if (buffer.size < 4) return ""
+        val b0 = buffer[0].toInt() and 0xff; val b1 = buffer[1].toInt() and 0xff
+        val b2 = buffer[2].toInt() and 0xff; val b3 = buffer[3].toInt() and 0xff
+        return when {
+            b0 == 0x89 && b1 == 0x50 && b2 == 0x4e && b3 == 0x47 -> "image/png"
+            b0 == 0xff && b1 == 0xd8 && b2 == 0xff -> "image/jpeg"
+            b0 == 0x47 && b1 == 0x49 && b2 == 0x46 && b3 == 0x38 -> "image/gif"
+            b0 == 0x42 && b1 == 0x4d -> "image/bmp"
+            b0 == 0x46 && b1 == 0x4f && b2 == 0x57 && b3 == 0x50 -> "image/webp"
+            else -> ""
+        }
+    }
+
+    private fun fetchRemoteImage(url: String, maxBytes: Long, timeoutMs: Long, maxRedirects: Int): JSONObject {
+        val result = JSONObject().put("url", url)
+        var current = url
+        var redirects = 0
+        try {
+            while (true) {
+                val client = OkHttpClient.Builder()
+                    .callTimeout(timeoutMs, TimeUnit.MILLISECONDS)
+                    .readTimeout(timeoutMs, TimeUnit.MILLISECONDS)
+                    .writeTimeout(timeoutMs, TimeUnit.MILLISECONDS)
+                    .followRedirects(false)
+                    .build()
+                client.newCall(Request.Builder().url(current).header("User-Agent", "ChengJing/0.1 Android").build()).execute().use { response ->
+                    val location = response.header("Location")
+                    val status = response.code
+                    if (status in 300..399 && location != null) {
+                        redirects += 1
+                        if (redirects > maxRedirects) return result.put("ok", false).put("error", "too-many-redirects")
+                        val next = try { java.net.URI(current, location) } catch (_: Exception) { return result.put("ok", false).put("error", "bad-redirect") }
+                        val reason = assertPublicImageUrl(next.toString())
+                        if (reason.isNotEmpty()) return result.put("ok", false).put("error", reason).put("redirectedTo", next.toString())
+                        current = next.toString(); continue
+                    }
+                    if (!response.isSuccessful) return result.put("ok", false).put("error", "http-$status").put("size", 0)
+                    val buffer = response.body?.byteStream()?.readBytes() ?: ByteArray(0)
+                    if (buffer.size.toLong() > maxBytes) return result.put("ok", false).put("error", "too-large").put("size", buffer.size)
+                    result.put("ok", true).put("data", Base64.encodeToString(buffer, Base64.NO_WRAP)).put("mime", detectMime(buffer)).put("size", buffer.size)
+                    if (redirects > 0) result.put("redirectedTo", current)
+                    return result
+                }
+            }
+        } catch (error: Exception) {
+            val timedOut = error is java.net.SocketTimeoutException || (error.message ?: "").contains("timeout", true) || (error.message ?: "").contains("Aborted", true)
+            return result.put("ok", false).put("error", if (timedOut) "timeout" else "download-failed")
+        }
+    }
+
+    fun downloadRemoteAssets(args: JSONObject): JSONObject {
+        val urls = args.optJSONArray("urls")?.let { array -> (0 until array.length()).mapNotNull { index -> runCatching { array.getString(index) }.getOrNull() } ?: emptyList()
+        val maxBytes = args.optLong("maxBytesPerAsset", REMOTE_IMAGE_BYTES)
+        val totalBudget = args.optLong("maxTotalBytes", REMOTE_TOTAL_BYTES)
+        val timeoutMs = args.optLong("timeoutMs", REMOTE_TIMEOUT_MS)
+        val maxRedirects = args.optInt("maxRedirects", MAX_REDIRECTS)
+        val assets = JSONArray()
+        var totalBytes = 0L
+        for (raw in urls) {
+            val url = raw
+            val reason = assertPublicImageUrl(url)
+            if (reason.isNotEmpty()) { assets.put(JSONObject().put("url", url).put("ok", false).put("error", reason).put("size", 0)); continue }
+            val fetched = fetchRemoteImage(url, maxBytes, timeoutMs, maxRedirects)
+            if (!fetched.optBoolean("ok", false)) { assets.put(fetched); continue }
+            if (totalBytes + fetched.optLong("size", 0) > totalBudget) { assets.put(JSONObject().put("url", url).put("ok", false).put("error", "total-budget-exceeded").put("size", 0)); continue }
+            totalBytes += fetched.optLong("size", 0)
+            assets.put(fetched)
+        }
+        return JSONObject().put("assets", assets)
+    }
+
+    /** 以 Storage Access Framework 選取的資源資料夾；授權持久化，重啟後仍可用。 */
+    fun setAssetFolder(treeUri: String): JSONObject {
+        val entry = JSONObject()
+        return try {
+            val root = DocumentFile.fromTreeUri(context, Uri.parse(treeUri))
+            require(root != null && root.isDirectory) { "not-a-directory" }
+            setDocumentTreeUri(treeUri)
+            entry.put("rootPath", treeUri).put("displayName", root.name ?: "").put("ok", true)
+        } catch (error: Exception) {
+            entry.put("rootPath", "").put("ok", false).put("error", error.message ?: "invalid-tree")
+        }
+    }
+
+    fun assetFolderStatus(): JSONObject {
+        val tree = documentTreeUri() ?: ""
+        if (tree.isEmpty()) return JSONObject().put("selected", false).put("rootPath", "")
+        val name = try { DocumentFile.fromTreeUri(context, Uri.parse(tree))?.name ?: "" } catch (_: Exception) { "" }
+        return JSONObject().put("selected", true).put("rootPath", tree).put("displayName", name)
+    }
+
+    fun resolveLocalAssets(treeUri: String, sourcePath: String, names: List<String>): JSONObject {
+        val root = DocumentFile.fromTreeUri(context, Uri.parse(treeUri))
+        val assets = JSONArray()
+        for (name in names) {
+            val entry = JSONObject().put("name", name)
+            try {
+                val relative = name.replace("\\", "/")
+                if (relative.contains("..")) { entry.put("error", "path-traversal"); assets.put(entry); continue }
+                var file = root
+                for (segment in relative.split("/").filter { it.isNotEmpty() }) file = file?.findFile(segment) ?: break
+                if (file == null || !file.isFile) { entry.put("error", "not-found"); assets.put(entry); continue }
+                if (file.length() > REMOTE_IMAGE_BYTES) { entry.put("error", "too-large").put("size", file.length()); assets.put(entry); continue }
+                val data = context.contentResolver.openInputStream(file.uri)?.readBytes() ?: ByteArray(0)
+                entry.put("data", Base64.encodeToString(data, Base64.NO_WRAP)).put("mime", detectMime(data)).put("size", data.size).put("sourcePath", file.name).put("rootPath", treeUri)
+                assets.put(entry)
+            } catch (error: Exception) { entry.put("error", error.message ?: "resolve-failed"); assets.put(entry) }
+        }
+        return JSONObject().put("rootPath", treeUri).put("assets", assets)
+    }
+
     fun call(method: String, args: JSONObject): Any? = when(method) {
         "local.status" -> inference.status()
         "local.download" -> inference.download()
@@ -102,6 +307,17 @@ class NativeServices(private val context: Context, private val backupApp: String
         "ai.listProviderModels", "ai.testProvider" -> { val p=profile(args.getString("id")); val models=json(p.getString("baseUrl").trimEnd('/')+"/models",secret=store.get("provider-${p.getString("id")}")).getJSONArray("data"); if(method=="ai.testProvider") JSONObject().put("ok",true).put("models",models).put("modelAvailable",true) else models }
         "ai.openRouterChat", "ai.providerChat" -> chat(args,method=="ai.openRouterChat")
         "web.fetch" -> { val url=args.getString("url"); require(Uri.parse(url).scheme=="https"); http.newCall(Request.Builder().url(url).build()).execute().use{ response->require(response.isSuccessful); JSONObject().put("html",response.body!!.string()).put("url",url) } }
+        "documents.resolveLocalAssets" -> {
+            val names = args.optJSONArray("names")?.let { array -> (0 until array.length()).map { index -> array.getString(index) } ?: emptyList<String>() } ?: emptyList<String>()
+            val sourcePath = args.optString("sourcePath", "")
+            val tree = documentTreeUri()
+            // 尚未授權資源資料夾：回報明確原因，渲染端會請使用者選取一次後重試。
+            if (tree.isNullOrEmpty()) JSONObject().put("rootPath", "").put("needsFolder", true).put("assets", JSONArray().apply { names.forEach { put(JSONObject().put("name", it).put("error", "folder-not-selected")) } })
+            else resolveLocalAssets(tree, sourcePath, names)
+        }
+        "documents.setAssetFolder" -> setAssetFolder(args.optString("rootUri", ""))
+        "documents.assetFolder" -> assetFolderStatus()
+        "documents.downloadRemoteAssets" -> downloadRemoteAssets(args)
         "google.status" -> JSONObject().put("connected",store.get("google-token").isNotEmpty())
         "google.disconnect" -> { store.put("google-token","");prefs.edit().putBoolean("sync-enabled",false).commit();androidx.work.WorkManager.getInstance(context).cancelUniqueWork("chengjing-sync-upload");androidx.work.WorkManager.getInstance(context).cancelUniqueWork("chengjing-sync-recovery");JSONObject().put("connected",false) }
         "sync.pause" -> {prefs.edit().putBoolean("sync-enabled",false).commit();androidx.work.WorkManager.getInstance(context).cancelUniqueWork("chengjing-sync-upload");androidx.work.WorkManager.getInstance(context).cancelUniqueWork("chengjing-sync-recovery");JSONObject()}

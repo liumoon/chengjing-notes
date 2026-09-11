@@ -134,6 +134,26 @@ interface Window {
       pendingPaths?: () => Promise<string[]>;
       restoreFromBackup: (request: { id: string; backupFilePath: string; sha256: string; name: string; mime: string; createdAt?: number }) => Promise<import("./types").AttachmentRecord>;
     };
+    documents?: {
+      resolveLocalAssets: (request: { sourcePath?: string; names: string[] }) => Promise<{
+        canceled?: boolean;
+        rootPath?: string;
+        /** Android 尚未授權資源資料夾時為 true，呼叫端應請使用者選取一次。 */
+        needsFolder?: boolean;
+        assets: Array<{ name: string; data?: string; sourcePath?: string; mime?: string; size?: number; error?: string }>;
+      }>;
+      /** Android：以 Storage Access Framework 選取一次資源資料夾（持久化授權）。 */
+      pickAssetFolder?: () => Promise<{ ok?: boolean; rootPath?: string; displayName?: string; canceled?: boolean; error?: string }>;
+      downloadRemoteAssets: (request: {
+        urls: string[];
+        maxBytesPerAsset?: number;
+        maxTotalBytes?: number;
+        timeoutMs?: number;
+        maxRedirects?: number;
+      }) => Promise<{
+        assets: Array<{ url: string; ok: boolean; data?: string; mime?: string; size?: number; redirectedTo?: string; error?: string }>;
+      }>;
+    };
     clipboard: {
       write: (request: { text: string; payload: Record<string, unknown> | null }) => Promise<{ written: boolean }>;
       read: () => Promise<{ text: string; payload: Record<string, unknown> | null }>;

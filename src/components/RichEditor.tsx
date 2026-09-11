@@ -1,9 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Highlight from "@tiptap/extension-highlight";
-import TaskList from "@tiptap/extension-task-list";
-import TaskItem from "@tiptap/extension-task-item";
 import {
   Bold,
   Braces,
@@ -16,25 +12,23 @@ import {
   Quote,
   Redo2,
   Strikethrough,
+  Table,
   Undo2,
 } from "lucide-react";
 import { useI18n } from "../hooks/useI18n";
 import { editorTaskRecordId, normalizeEditorTaskHtml, syncCardTasksFromHtml } from "../lib/taskSync";
 import { showContextMenu } from "../lib/contextMenu";
+import { cardExtensions } from "../lib/markdownBridge";
+import { canonicalizeImageSrcs, releaseResolvedUrls, resolveInlineImageSrcs } from "../lib/attachmentRefs";
+import type { AttachmentRecord } from "../types";
 
-const SyncedTaskItem = TaskItem.extend({
-  addAttributes() {
-    return {
-      ...(this.parent?.() || {}),
-      taskId: {
-        default: null,
-        parseHTML: (element) => element.getAttribute("data-task-id"),
-        renderHTML: (attributes) => attributes.taskId ? { "data-task-id": attributes.taskId } : {},
-      },
-    };
-  },
-});
-
+/**
+ * 富文字模式。
+ *
+ * 擴充集合直接取自 `markdownBridge.cardExtensions()`，確保編輯器、
+ * 匯入器與匯出器共用同一個 schema。正文裡的圖片以 `attachment://<id>`
+ * 存庫，畫面顯示前才解析成桌面／Android 本機 URL。
+ */
 interface RichEditorProps {
   content: string;
   onChange: (html: string, text: string) => unknown;
@@ -43,25 +37,24 @@ interface RichEditorProps {
   compact?: boolean;
   onHighlight?: (text: string) => void | Promise<void>;
   taskOwnerId?: string;
+  attachments?: AttachmentRecord[];
 }
 
-export function RichEditor({ content, onChange, placeholder, autoFocus = false, compact = false, onHighlight, taskOwnerId }: RichEditorProps) {
+export function RichEditor({ content, onChange, placeholder, autoFocus = false, compact = false, onHighlight, taskOwnerId, attachments = [] }: RichEditorProps) {
   const { t, language } = useI18n();
   const resolvedPlaceholder = placeholder || t("editor.start");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSave = useRef<(() => void) | null>(null);
   const onChangeRef = useRef(onChange);
   const taskOwnerIdRef = useRef(taskOwnerId);
+  const attachmentsRef = useRef(attachments);
   const saveRevision = useRef(0);
+  const objectUrls = useRef<string[]>([]);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
+
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Highlight.configure({ multicolor: true }),
-      TaskList,
-      SyncedTaskItem.configure({ nested: true }),
-    ],
-    content,
+    extensions: cardExtensions(),
+    content: resolveInlineImageSrcs(content, attachments).html,
     autofocus: autoFocus,
     editorProps: {
       attributes: {
@@ -73,17 +66,18 @@ export function RichEditor({ content, onChange, placeholder, autoFocus = false, 
     onUpdate: ({ editor: activeEditor }) => {
       setSaveState("saving");
       if (timer.current) clearTimeout(timer.current);
-      const originalHtml = activeEditor.getHTML();
-      const normalized = normalizeEditorTaskHtml(originalHtml);
+      const displayHtml = activeEditor.getHTML();
+      const storedHtml = canonicalizeImageSrcs(displayHtml, attachmentsRef.current);
+      const normalized = normalizeEditorTaskHtml(storedHtml);
       const plainText = activeEditor.getText({ blockSeparator: "\n" });
       const save = onChangeRef.current;
       const owner = taskOwnerIdRef.current;
       const revision = ++saveRevision.current;
       pendingSave.current = () => {
         pendingSave.current = null;
-        if (!activeEditor.isDestroyed && activeEditor.getHTML() === originalHtml && normalized.html !== originalHtml) {
+        if (!activeEditor.isDestroyed && activeEditor.getHTML() === displayHtml && normalized.html !== displayHtml) {
           const selection = activeEditor.state.selection;
-          activeEditor.commands.setContent(normalized.html, { emitUpdate: false });
+          activeEditor.commands.setContent(resolveInlineImageSrcs(normalized.html, attachmentsRef.current).html, { emitUpdate: false });
           activeEditor.commands.setTextSelection({ from: selection.from, to: selection.to });
         }
         void Promise.resolve().then(() => save(normalized.html, plainText)).then(async () => {
@@ -97,29 +91,35 @@ export function RichEditor({ content, onChange, placeholder, autoFocus = false, 
 
   useEffect(() => {
     if (!editor || editor.getHTML() === content) return;
-    editor.commands.setContent(content || "<p></p>", { emitUpdate: false });
-  }, [content, editor]);
+    const resolved = resolveInlineImageSrcs(content || "<p></p>", attachments);
+    releaseResolvedUrls(objectUrls.current);
+    objectUrls.current = resolved.resolved;
+    editor.commands.setContent(resolved.html, { emitUpdate: false });
+  }, [content, editor, attachments]);
 
   useEffect(() => {
     onChangeRef.current = onChange;
     taskOwnerIdRef.current = taskOwnerId;
-  }, [onChange, taskOwnerId]);
+    attachmentsRef.current = attachments;
+  }, [onChange, taskOwnerId, attachments]);
 
   useEffect(() => {
     if (!editor || !taskOwnerId) return;
-    const originalHtml = editor.getHTML();
-    const normalized = normalizeEditorTaskHtml(originalHtml);
-    if (normalized.html !== originalHtml) {
-      editor.commands.setContent(normalized.html, { emitUpdate: false });
+    const storedHtml = canonicalizeImageSrcs(editor.getHTML(), attachments);
+    const normalized = normalizeEditorTaskHtml(storedHtml);
+    if (normalized.html !== storedHtml) {
+      editor.commands.setContent(resolveInlineImageSrcs(normalized.html, attachments).html, { emitUpdate: false });
       onChangeRef.current(normalized.html, editor.getText({ blockSeparator: "\n" }));
     }
     void syncCardTasksFromHtml(taskOwnerId, normalized.html);
-  }, [editor, taskOwnerId]);
+  }, [editor, taskOwnerId, attachments]);
 
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
     // The captured HTML and owner remain valid after the editor view is destroyed.
     pendingSave.current?.();
+    releaseResolvedUrls(objectUrls.current);
+    objectUrls.current = [];
   }, [taskOwnerId]);
 
   useEffect(() => {
@@ -165,6 +165,7 @@ export function RichEditor({ content, onChange, placeholder, autoFocus = false, 
           {tool(t("editor.tasks"), editor.isActive("taskList"), () => editor.chain().focus().toggleTaskList().run(), <CheckSquare size={15} />)}
           {tool(t("editor.quote"), editor.isActive("blockquote"), () => editor.chain().focus().toggleBlockquote().run(), <Quote size={15} />)}
           {tool(t("editor.code"), editor.isActive("codeBlock"), () => editor.chain().focus().toggleCodeBlock().run(), <Braces size={15} />)}
+          {tool(getTableLabel(language), editor.isActive("table"), () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(), <Table size={15} />)}
         </div>
         <div>
           <span role={saveState === "error" ? "alert" : "status"} className={`save-state ${saveState}`}>{saveState === "error" ? ({"zh-TW":"儲存失敗，請勿關閉","zh-CN":"保存失败，请勿关闭",en:"Save failed. Keep this open.",ja:"保存できません。閉じないでください。",ko:"저장 실패. 닫지 마세요."})[language] : saveState === "saving" ? t("common.saving") : t("common.saved")}</span>
@@ -175,4 +176,8 @@ export function RichEditor({ content, onChange, placeholder, autoFocus = false, 
       <EditorContent editor={editor} />
     </div>
   );
+}
+
+function getTableLabel(language: string) {
+  return ({ "zh-TW": "插入表格", "zh-CN": "插入表格", en: "Insert table", ja: "表を挿入", ko: "표 삽입" } as Record<string, string>)[language] || "Insert table";
 }

@@ -39,10 +39,11 @@ export function MobileChrome() {
       try {
         const queue = await androidCall<Array<{ id: string; text: string; files: Array<{ path: string; name: string }> }>>("share.pending");
         const { db } = await import("../db");
-        const { importFile } = await import("../lib/importers");
+        const { importDocuments } = await import("../lib/importPipeline");
         for (const item of queue) {
           if (item.text && !await db.fragments.get(item.id)) { const now = Date.now(); await db.fragments.add({ id: item.id, text: item.text, pinned: false, tagIds: [], createdAt: now, updatedAt: now }); }
-          for (const file of item.files) await importFile(file.name, new Blob(), file.path);
+          // 分享的檔案交給共用管線：一檔一卡並保留原檔。
+          if (item.files.length) await importDocuments(item.files.map((file) => ({ name: file.name, blob: new Blob(), sourcePath: file.path })), { language });
           await androidCall("share.ack", { id: item.id });
         }
         if (queue.length) useAppStore.getState().setView("fragments");

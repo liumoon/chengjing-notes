@@ -28,6 +28,45 @@ function isLoopbackHostname(hostname) {
   return ["127.0.0.1", "localhost", "[::1]", "::1"].includes(String(hostname || "").toLowerCase());
 }
 
+function normalizeIpv4(hostname) {
+  let host = String(hostname || "").trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+  if (!host) return null;
+  const mapped = host.match(/^::ffff:([0-9.]+)$/);
+  if (mapped) return normalizeIpv4(mapped[1]);
+  const labels = host.split(".");
+  if (labels.length < 1 || labels.length > 4) return null;
+  const parts = [];
+  for (const label of labels) {
+    if (!label) return null;
+    let value;
+    if (/^0x[0-9a-f]+$/.test(label)) value = Number.parseInt(label.slice(2), 16);
+    else if (/^0[0-7]+$/.test(label)) value = Number.parseInt(label.slice(1), 8);
+    else if (/^\d+$/.test(label)) value = Number.parseInt(label, 10);
+    else return null;
+    if (!Number.isSafeInteger(value)) return null;
+    if (labels.length === 1 ? value > 0xffffffff : value > 255) return null;
+    parts.push(value);
+  }
+  if (parts.length === 1) return [parts[0] >>> 24, parts[0] >>> 16 & 255, parts[0] >>> 8 & 255, parts[0] & 255];
+  if (parts.length === 2) return [parts[0] >>> 8, parts[0] & 255, parts[1] >>> 8, parts[1] & 255];
+  if (parts.length === 3) return [parts[0], parts[1] >>> 8, parts[1] & 255, parts[2]];
+  return parts;
+}
+
+function isPrivateNetworkHostname(hostname) {
+  const host = String(hostname || "").trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+  if (!host || host === "localhost") return host === "localhost";
+  const ipv4 = normalizeIpv4(host);
+  if (ipv4) {
+    const [a, b] = ipv4;
+    return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+  }
+  if (host.includes(":")) {
+    return host === "::1" || host.startsWith("fc") || host.startsWith("fd");
+  }
+  return false;
+}
+
 function normalizeBaseUrl(value, type = "openai-compatible") {
   const fallback = type === "ollama" ? "http://127.0.0.1:11434/v1" : "";
   const raw = safeText(value, 1_000) || fallback;
@@ -35,7 +74,7 @@ function normalizeBaseUrl(value, type = "openai-compatible") {
   try { url = new URL(raw); }
   catch { throw new Error("provider-base-url-invalid"); }
   if (url.username || url.password || url.search || url.hash) throw new Error("provider-base-url-invalid");
-  if (url.protocol === "http:" && !isLoopbackHostname(url.hostname)) throw new Error("provider-insecure-remote-url");
+  if (url.protocol === "http:" && !isPrivateNetworkHostname(url.hostname)) throw new Error("provider-insecure-remote-url");
   if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("provider-base-url-invalid");
   url.pathname = url.pathname.replace(/\/+$/, "") || "/";
   return url.toString().replace(/\/$/, "");
@@ -142,6 +181,7 @@ module.exports = {
   SETTINGS_FILE,
   VAULT_NAMESPACE,
   isLoopbackHostname,
+  isPrivateNetworkHostname,
   normalizeBaseUrl,
   normalizeProfile,
   providerProfileWithSecret,

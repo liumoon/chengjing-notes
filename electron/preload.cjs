@@ -109,6 +109,10 @@ contextBridge.exposeInMainWorld("chengjing", {
     pendingPaths: () => ipcRenderer.invoke("attachment:pending-paths"),
     restoreFromBackup: (request) => ipcRenderer.invoke("attachment:restore-from-backup", request),
   },
+  documents: {
+    resolveLocalAssets: (request) => ipcRenderer.invoke("documents:resolve-local-assets", request),
+    downloadRemoteAssets: (request) => ipcRenderer.invoke("documents:download-remote-assets", request),
+  },
   clipboard: {
     write: (request) => ipcRenderer.invoke("clipboard:write", request),
     read: () => ipcRenderer.invoke("clipboard:read"),

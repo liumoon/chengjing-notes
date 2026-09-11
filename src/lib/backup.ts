@@ -8,6 +8,8 @@ import { migrateLegacyAttachments, portableAttachmentBlob, restoreFileAttachment
 import type { AttachmentRecord } from "../types";
 import { uniqueArchiveName, validateBackup } from "./backupValidation";
 import { clearGlobalHistory, runWithoutGlobalHistory } from "./globalHistory";
+import { toMarkdown } from "./contentPipeline";
+import { rewriteRefsForExport } from "./attachmentRefs";
 import { getHealthCopy } from "./healthCopy";
 
 const TABLES = ["cards", "cardVersions", "boards", "boardNodes", "boardEdges", "kanbanBoards", "kanbanLists", "kanbanPlacements", "tags", "tasks", "highlights", "chatThreads", "chatMessages", "courses", "preferences", "fragments", "brainEdges", "brainReports", "brainShares", "knowledgeGroups"] as const;
@@ -84,9 +86,11 @@ export async function saveMarkdownArchive() {
   const language = useAppStore.getState().language || "zh-TW";
   const zip = new JSZip();
   const cards = await db.cards.toArray();
+  const allAttachments = await db.attachments.toArray();
   const usedNames = new Set<string>();
   for (const card of cards) {
     const safeTitle = uniqueArchiveName(card.title || card.id, usedNames);
+    const inlineImages = allAttachments.filter((attachment) => card.attachmentIds.includes(attachment.id) && attachment.role !== "source");
     const frontMatter = [
       "---",
       `id: ${card.id}`,
@@ -97,11 +101,12 @@ export async function saveMarkdownArchive() {
       "---",
       "",
     ].join("\n");
-    const text = card.plainText || card.contentHtml.replace(/<[^>]+>/g, " ");
-    zip.file(`${translate(language, "backup.cardsFolder")}/${safeTitle}.md`, `${frontMatter}# ${card.title}\n\n${text}\n`);
+    // 真正的 TipTap Markdown serializer；不再以 plainText 代替格式。
+    const serialized = await toMarkdown(card.contentHtml || "<p></p>");
+    const body = rewriteRefsForExport(serialized.markdown.trim() || card.plainText || "", inlineImages);
+    zip.file(`${translate(language, "backup.cardsFolder")}/${safeTitle}.md`, `${frontMatter}# ${card.title}\n\n${body}\n`);
   }
-  const attachments = await db.attachments.toArray();
-  for (const attachment of attachments) zip.file(`${translate(language, "backup.attachmentsFolder")}/${attachment.id}-${attachment.name}`, await portableAttachmentBlob(attachment));
+  for (const attachment of allAttachments) zip.file(`${translate(language, "backup.attachmentsFolder")}/${attachment.id}-${attachment.name}`, await portableAttachmentBlob(attachment));
   const fragments = await db.fragments.orderBy("createdAt").toArray();
   if (fragments.length) zip.file(`${translate(language, "backup.fragmentsFile")}.md`, fragments.map((fragment) => `- ${new Date(fragment.createdAt).toLocaleString(intlLocale[language])}  ${fragment.text}`).join("\n"));
   const reports = await db.brainReports.orderBy("date").toArray();

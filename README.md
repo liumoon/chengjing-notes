@@ -701,10 +701,10 @@ Windows ARM 電腦請下載 ARM64；一般 Intel／AMD 電腦請下載 x64。目
 
 1. 打開「設定」，選擇「自訂 AI Provider」。
 2. 展開進階設定，選擇相容範圍最廣的 Chat Completions，或新式 Responses API；使用 Ollama 時保留預設位址 `http://127.0.0.1:11434/v1`，填入已下載的模型 ID，例如 `qwen3:8b`。
-3. 自訂 Gateway 則選擇「OpenAI 相容 Gateway」，填入 HTTPS API 位址、模型 ID，以及該服務需要的 API Key。
+3. 自訂 Gateway 則選擇「OpenAI 相容 Gateway」，填入 HTTPS API 位址，或填入 localhost／私有區域網路 IP 的 HTTP 位址、模型 ID，以及該服務需要的 API Key。
 4. 儲存後可取得模型清單或測試連線，再把這組連線設為使用中。
 
-澄境使用 OpenAI 相容的 `/models`，並依連線設定呼叫 `/chat/completions` 或 `/responses`。遠端 Responses 請求固定使用 `store: false`；Ollama 不使用伺服器端對話 ID，而是由澄境帶入必要歷史。遠端服務只接受 HTTPS；本機 HTTP 只接受 `localhost`、`127.0.0.1` 或 `::1`。金鑰加密留在這台電腦，備份不包含金鑰。
+澄境使用 OpenAI 相容的 `/models`，並依連線設定呼叫 `/chat/completions` 或 `/responses`。遠端 Responses 請求固定使用 `store: false`；Ollama 不使用伺服器端對話 ID，而是由澄境帶入必要歷史。遠端服務只接受 HTTPS；HTTP 只接受 `localhost`、loopback、RFC1918 私有網段（`10.0.0.0/8`、`172.16.0.0/12`、`192.168.0.0/16`）或 IPv6 ULA。金鑰加密留在這台電腦，備份不包含金鑰。
 
 ### Codex／Claude Code MCP
 

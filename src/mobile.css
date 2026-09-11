@@ -305,3 +305,10 @@ html[data-platform="android"] .window-drag-region { display: none; }
 .android-launch-placeholder { position:fixed; inset:0; background:var(--canvas); }
 html[data-platform="android"] .command-palette > footer { display:none; }
 html[data-platform="android"] .mobile-command-close { display:grid; place-items:center; width:44px; height:44px; flex:none; border:0; background:none; color:var(--text-muted); }
+
+/* 卡片雙模式與匯入 Workbench 的窄屏調整 */
+.card-content-editor[data-mode="markdown"] .markdown-source-input { min-height: 55vh; font-size: calc(13px * var(--font-scale)); }
+.markdown-source-toolbar { flex-wrap: wrap; gap: 6px; }
+.markdown-hint { display: none; }
+.import-drop-zone { min-height: 168px; padding: 18px; }
+.import-results li { grid-template-columns: 16px minmax(0, 1fr) auto; }

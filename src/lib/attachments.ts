@@ -1,5 +1,5 @@
 import { db } from "../db";
-import type { AttachmentRecord } from "../types";
+import type { AttachmentRecord, AttachmentRole } from "../types";
 import { blobToDataUrl, dataUrlToBlob } from "./utils";
 import { ignoreTransactionHistory } from "./historyTransactions";
 
@@ -19,7 +19,22 @@ export function shouldRevokeAttachmentUrl(attachment: AttachmentRecord) {
   return attachment.storage !== "file" && Boolean(attachment.blob);
 }
 
-export async function persistAttachment(name: string, blob: Blob, mime: string, sourcePath?: string): Promise<AttachmentRecord> {
+/** 依副檔名與提供的 MIME 推斷附件協定，缺 octet-stream 時補齊。 */
+export function inferAttachmentMime(name: string, provided = "") {
+  if (provided && provided !== "application/octet-stream") return provided;
+  const lower = String(name || "").toLowerCase();
+  return lower.endsWith(".pdf") ? "application/pdf"
+    : /\.(png|jpe?g|webp|gif|avif|bmp|svg)$/.test(lower) ? `image/${lower.endsWith(".svg") ? "svg+xml" : lower.endsWith(".jpg") ? "jpeg" : lower.match(/\.([^.]+)$/)?.[1]}`
+      : /\.(mp3|m4a|wav|ogg|flac)$/.test(lower) ? `audio/${lower.endsWith(".m4a") ? "mp4" : lower.match(/\.([^.]+)$/)?.[1]}`
+        : /\.(mp4|mov|webm|mkv)$/.test(lower) ? `video/${lower.endsWith(".mov") ? "quicktime" : lower.match(/\.([^.]+)$/)?.[1]}`
+          : lower.endsWith(".md") || lower.endsWith(".markdown") ? "text/markdown"
+            : lower.endsWith(".txt") ? "text/plain"
+              : lower.endsWith(".html") || lower.endsWith(".htm") ? "text/html"
+                : lower.endsWith(".docx") ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  : "application/octet-stream";
+}
+
+export async function persistAttachment(name: string, blob: Blob, mime: string, sourcePath?: string, role?: AttachmentRole): Promise<AttachmentRecord> {
   const id = crypto.randomUUID();
   const createdAt = Date.now();
   let attachment: AttachmentRecord;
@@ -31,7 +46,9 @@ export async function persistAttachment(name: string, blob: Blob, mime: string, 
     const storedBlob = blob.type === mime ? blob : blob.slice(0, blob.size, mime);
     attachment = { id, name, mime, size: storedBlob.size, blob: storedBlob, storage: "indexeddb", createdAt };
   }
-  await db.attachments.add(attachment);
+  // role 是可選欄位：桌面與 Android 橋接不認識它時，在本機補上就好。
+  attachment = { ...attachment, role: role || attachment.role || "attachment" };
+  await db.attachments.put(attachment);
   return attachment;
 }
 

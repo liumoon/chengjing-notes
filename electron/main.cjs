@@ -13,6 +13,7 @@ const { buildApplicationMenuTemplate, shouldUseUpdateMenuIcon } = require("./men
 const { parseMacHotkey } = require("./mac-hotkey.cjs");
 const { isUpdateCandidateStale, parseLatestRelease, parseLatestReleaseFeed } = require("./update-service.cjs");
 const { DEFAULT_SHORTCUT, readQuickCaptureSettings, writeQuickCaptureSettings } = require("./quick-capture-settings.cjs");
+const { downloadRemoteAssets, resolveLocalAssets } = require("./documents.cjs");
 
 const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
 const OPENROUTER_KEY_URL = "https://openrouter.ai/api/v1/key";
@@ -314,11 +315,11 @@ function message(key, variables = {}) {
 }
 
 const PROVIDER_MESSAGES = {
-  "zh-TW": { unavailable: "無法連上這個 AI Provider，請檢查網址、模型與服務是否正在執行。", timeout: "AI Provider 回應逾時，請確認服務與模型是否可用。", invalid: "AI Provider 回傳了無法辨識的內容。", empty: "AI Provider 沒有產生文字，請換一個模型再試。", url: "API 位址無效。遠端服務必須使用 HTTPS；HTTP 只允許 localhost。", model: "請輸入模型 ID。", limit: "最多可以保存 12 組 AI Provider 連線。" },
-  "zh-CN": { unavailable: "无法连接这个 AI Provider，请检查地址、模型和服务是否正在运行。", timeout: "AI Provider 响应超时，请确认服务和模型是否可用。", invalid: "AI Provider 返回了无法识别的内容。", empty: "AI Provider 没有生成文字，请更换模型重试。", url: "API 地址无效。远程服务必须使用 HTTPS；HTTP 仅允许 localhost。", model: "请输入模型 ID。", limit: "最多可保存 12 个 AI Provider 连接。" },
-  en: { unavailable: "Could not reach this AI provider. Check the URL, model, and whether the service is running.", timeout: "The AI provider timed out. Check that the service and model are available.", invalid: "The AI provider returned an unreadable response.", empty: "The AI provider returned no text. Try another model.", url: "The API URL is invalid. Remote services require HTTPS; HTTP is allowed only for localhost.", model: "Enter a model ID.", limit: "You can save up to 12 AI provider connections." },
-  ja: { unavailable: "このAI Providerに接続できません。URL、モデル、サービスの実行状態を確認してください。", timeout: "AI Providerの応答がタイムアウトしました。サービスとモデルを確認してください。", invalid: "AI Providerから認識できない応答が返されました。", empty: "AI Providerがテキストを生成しませんでした。別のモデルをお試しください。", url: "API URLが無効です。リモートはHTTPS必須で、HTTPはlocalhostだけ使用できます。", model: "モデルIDを入力してください。", limit: "AI Provider接続は最大12件まで保存できます。" },
-  ko: { unavailable: "이 AI Provider에 연결할 수 없습니다. URL, 모델 및 서비스 실행 상태를 확인하세요.", timeout: "AI Provider 응답 시간이 초과되었습니다. 서비스와 모델을 확인하세요.", invalid: "AI Provider가 인식할 수 없는 응답을 반환했습니다.", empty: "AI Provider가 텍스트를 생성하지 않았습니다. 다른 모델을 시도하세요.", url: "API 주소가 올바르지 않습니다. 원격 서비스는 HTTPS를 사용해야 하며 HTTP는 localhost에서만 허용됩니다.", model: "모델 ID를 입력하세요.", limit: "AI Provider 연결은 최대 12개까지 저장할 수 있습니다." },
+  "zh-TW": { unavailable: "無法連上這個 AI Provider，請檢查網址、模型與服務是否正在執行。", timeout: "AI Provider 回應逾時，請確認服務與模型是否可用。", invalid: "AI Provider 回傳了無法辨識的內容。", empty: "AI Provider 沒有產生文字，請換一個模型再試。", url: "API 位址無效。遠端服務必須使用 HTTPS；HTTP 僅允許 localhost 或私有區域網路位址。", model: "請輸入模型 ID。", limit: "最多可以保存 12 組 AI Provider 連線。" },
+  "zh-CN": { unavailable: "无法连接这个 AI Provider，请检查地址、模型和服务是否正在运行。", timeout: "AI Provider 响应超时，请确认服务和模型是否可用。", invalid: "AI Provider 返回了无法识别的内容。", empty: "AI Provider 没有生成文字，请更换模型重试。", url: "API 地址无效。远程服务必须使用 HTTPS；HTTP 仅允许 localhost 或私有局域网地址。", model: "请输入模型 ID。", limit: "最多可保存 12 个 AI Provider 连接。" },
+  en: { unavailable: "Could not reach this AI provider. Check the URL, model, and whether the service is running.", timeout: "The AI provider timed out. Check that the service and model are available.", invalid: "The AI provider returned an unreadable response.", empty: "The AI provider returned no text. Try another model.", url: "The API URL is invalid. Remote services require HTTPS; HTTP is allowed only for localhost or private LAN addresses.", model: "Enter a model ID.", limit: "You can save up to 12 AI provider connections." },
+  ja: { unavailable: "このAI Providerに接続できません。URL、モデル、サービスの実行状態を確認してください。", timeout: "AI Providerの応答がタイムアウトしました。サービスとモデルを確認してください。", invalid: "AI Providerから認識できない応答が返されました。", empty: "AI Providerがテキストを生成しませんでした。別のモデルをお試しください。", url: "API URLが無効です。リモートはHTTPS必須で、HTTPはlocalhostまたはプライベートLANアドレスのみ使用できます。", model: "モデルIDを入力してください。", limit: "AI Provider接続は最大12件まで保存できます。" },
+  ko: { unavailable: "이 AI Provider에 연결할 수 없습니다. URL, 모델 및 서비스 실행 상태를 확인하세요.", timeout: "AI Provider 응답 시간이 초과되었습니다. 서비스와 모델을 확인하세요.", invalid: "AI Provider가 인식할 수 없는 응답을 반환했습니다.", empty: "AI Provider가 텍스트를 생성하지 않았습니다. 다른 모델을 시도하세요.", url: "API 주소가 올바르지 않습니다. 원격 서비스는 HTTPS를 사용해야 하며 HTTP는 localhost 또는 사설 LAN 주소에서만 허용됩니다.", model: "모델 ID를 입력하세요.", limit: "AI Provider 연결은 최대 12개까지 저장할 수 있습니다." },
 };
 
 function friendlyProviderError(error) {
@@ -1599,6 +1600,23 @@ ipcMain.handle("attachment:cleanup", async (_event, request = {}) => {
 });
 ipcMain.handle("attachment:restore-from-backup", async (_event, request = {}) => {
   return require("./attachment-recovery.cjs").restoreAttachmentFile(attachmentsDirectory(), request);
+});
+
+ipcMain.handle("documents:resolve-local-assets", async (_event, request) => {
+  try {
+    return await resolveLocalAssets(request);
+  } catch (error) {
+    const names = Array.isArray(request?.names) ? request.names : [];
+    return { rootPath: "", assets: names.map((name) => ({ name, error: error?.message || "resolve-failed" })) };
+  }
+});
+ipcMain.handle("documents:download-remote-assets", async (_event, request) => {
+  try {
+    return await downloadRemoteAssets(net, request);
+  } catch (error) {
+    const urls = Array.isArray(request?.urls) ? request.urls : [];
+    return { assets: urls.map((url) => ({ url, ok: false, error: error?.message || "download-failed" })) };
+  }
 });
 
 app.whenReady().then(async () => {

@@ -172,6 +172,8 @@ export interface HighlightRecord {
   createdAt: number;
 }
 
+export type AttachmentRole = "source" | "inline" | "attachment";
+
 export interface AttachmentRecord {
   id: string;
   name: string;
@@ -182,6 +184,12 @@ export interface AttachmentRecord {
   relativePath?: string;
   sha256?: string;
   createdAt: number;
+  /**
+   * 選填。`source` 是匯入的原始文件，`inline` 是从正文抽出的圖片，
+   * `attachment` 是一般附件。舊備份沒有這個欄位，讀取時一律視為
+   * `attachment`，因此不需要 Dexie 索引或破壞性遷移。
+   */
+  role?: AttachmentRole;
 }
 
 export interface ChatThreadRecord {

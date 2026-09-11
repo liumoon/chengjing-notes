@@ -4,7 +4,7 @@ import { createCard } from "../db";
 import { translate } from "../i18n";
 import { useAppStore } from "../store";
 import type { AttachmentRecord, CardKind, CardRecord } from "../types";
-import { attachmentUrl, persistAttachment, removeStoredAttachment } from "./attachments";
+import { attachmentUrl, inferAttachmentMime, persistAttachment, removeStoredAttachment } from "./attachments";
 
 function language() {
   return useAppStore.getState().language || "zh-TW";
@@ -18,19 +18,8 @@ function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character] || character);
 }
 
-export function inferAttachmentMime(name: string, provided = "") {
-  if (provided && provided !== "application/octet-stream") return provided;
-  const lower = name.toLowerCase();
-  return lower.endsWith(".pdf") ? "application/pdf"
-    : /\.(png|jpe?g|webp|gif|avif|svg)$/.test(lower) ? `image/${lower.endsWith(".svg") ? "svg+xml" : lower.match(/\.([^.]+)$/)?.[1]?.replace("jpg", "jpeg")}`
-      : /\.(mp3|m4a|wav|ogg|flac)$/.test(lower) ? `audio/${lower.match(/\.([^.]+)$/)?.[1]?.replace("m4a", "mp4")}`
-        : /\.(mp4|mov|webm|mkv)$/.test(lower) ? `video/${lower.match(/\.([^.]+)$/)?.[1]?.replace("mov", "quicktime")}`
-          : lower.endsWith(".md") ? "text/markdown"
-            : lower.endsWith(".txt") ? "text/plain"
-              : lower.endsWith(".html") ? "text/html"
-                : lower.endsWith(".docx") ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  : "application/octet-stream";
-}
+
+export { inferAttachmentMime };
 
 export async function storeAttachment(name: string, blob: Blob, sourcePath?: string): Promise<AttachmentRecord> {
   const mime = inferAttachmentMime(name, blob.type);

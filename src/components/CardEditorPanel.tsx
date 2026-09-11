@@ -20,12 +20,15 @@ import {
   Sparkles,
   Tag,
   Trash2,
+  Download,
 } from "lucide-react";
 import { db, moveCardToTrash, restoreCardVersion, updateCardWithHistory } from "../db";
 import { useAppStore } from "../store";
 import type { AttachmentRecord, CardRecord } from "../types";
 import { localizedKindLabel, relativeTime } from "../lib/utils";
-import { RichEditor } from "./RichEditor";
+import { CardContentEditor } from "./CardContentEditor";
+import { exportCardMarkdown } from "../lib/markdownExport";
+import { getImportCopy } from "../lib/importCopy";
 import { showContextMenuFromButton } from "../lib/contextMenu";
 import { useI18n } from "../hooks/useI18n";
 import { TagPicker } from "./TagPicker";
@@ -65,6 +68,8 @@ export function CardEditorPanel() {
   const { intlLocale, language, t } = useI18n();
   const card = useLiveQuery(() => cardId ? db.cards.get(cardId) : undefined, [cardId]);
   const attachments = useLiveQuery(async () => card ? (await Promise.all(card.attachmentIds.map((id) => db.attachments.get(id)))).filter(Boolean) as AttachmentRecord[] : [], [card?.attachmentIds.join("|")], []);
+  // 卡片頂部只列來源與一般附件；內嵌圖片只出現在正文。
+  const headerAttachments = attachments.filter((attachment) => attachment.role !== "inline");
   const locations = useLiveQuery(async () => {
     if (!cardId) return [];
     const nodes = await db.boardNodes.where("cardId").equals(cardId).toArray();
@@ -90,6 +95,16 @@ export function CardEditorPanel() {
   const pendingTitle = useRef<(() => void) | null>(null);
   const titleComposing = useRef(false);
   const propertyCopy = getCardPropertyCopy(language);
+  const importCopy = getImportCopy(language);
+
+  async function exportMarkdown() {
+    try {
+      const result = await exportCardMarkdown(activeCard, language);
+      if (!result.canceled) showHighlightNotice(importCopy.exportMarkdownDone.replace("{name}", result.name));
+    } catch {
+      showHighlightNotice(importCopy.exportMarkdownFailed);
+    }
+  }
 
   useEffect(() => {
     if (!titleComposing.current) setTitleDraft(card?.title || "");
@@ -191,6 +206,7 @@ export function CardEditorPanel() {
         <div>
           <button type="button" className="icon-button" onClick={captureHighlight} aria-label={t("card.captureHighlight")} title={t("card.captureHighlight")}><Highlighter size={16} /></button>
           <button type="button" className={card.favorite ? "icon-button is-active" : "icon-button"} onClick={() => update({ favorite: !card.favorite })} aria-label={card.favorite ? t("card.unpin") : t("card.pin")} title={card.favorite ? t("card.unpin") : t("card.pin")}><Pin size={16} fill={card.favorite ? "currentColor" : "none"} /></button>
+          <button type="button" className="icon-button" aria-label={importCopy.exportMarkdown} title={importCopy.exportMarkdown} onClick={() => void exportMarkdown()}><Download size={16} /></button>
           <button type="button" className="icon-button" data-card-menu-trigger aria-label={t("card.more")} title={t("card.more")} onClick={(event) => showContextMenuFromButton(event, { kind: "card", id: card.id })}><MoreHorizontal size={17} /></button>
         </div>
       </header>
@@ -204,9 +220,9 @@ export function CardEditorPanel() {
             <TagPicker selectedIds={card.tagIds} onChange={(tagIds) => update({ tagIds })} />
             <span>{relativeTime(card.updatedAt, language)}</span>
           </div>
-          {attachments.map((attachment) => <AttachmentPreview key={attachment.id} attachment={attachment} downloadLabel={t("card.download", { name: attachment.name })} onRemove={() => detachAttachment(attachment)} />)}
+          {headerAttachments.map((attachment) => <AttachmentPreview key={attachment.id} attachment={attachment} downloadLabel={t("card.download", { name: attachment.name })} onRemove={() => detachAttachment(attachment)} />)}
           {card.sourceUrl && <a className="source-link" href={card.sourceUrl} target="_blank" rel="noreferrer"><ArrowUpRight size={14} /><span>{t("card.source")}</span><code>{new URL(card.sourceUrl).hostname}</code></a>}
-          <RichEditor content={card.contentHtml} onChange={(contentHtml, plainText) => update({ contentHtml, plainText })} onHighlight={createHighlight} taskOwnerId={card.id} compact />
+          <CardContentEditor contentHtml={card.contentHtml} onChange={(contentHtml, plainText) => update({ contentHtml, plainText })} onHighlight={createHighlight} taskOwnerId={card.id} attachments={attachments} />
         </div>
       ) : (
         <div className="card-info-panel">

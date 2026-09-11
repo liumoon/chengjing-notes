@@ -3,9 +3,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Download, FileArchive, FileText, Globe2, Link2, LoaderCircle, Upload, X } from "lucide-react";
 import { useAppStore } from "../store";
 import { useI18n } from "../hooks/useI18n";
-import { importFile, importWebUrl } from "../lib/importers";
+import { importWebUrl } from "../lib/importers";
+import { ImportWorkbench } from "./ImportWorkbench";
 import { restoreLocalBackup, saveJsonBackup, saveMarkdownArchive } from "../lib/backup";
-import { dataUrlToBlob } from "../lib/utils";
 
 export function ImportModal() {
   const { t } = useI18n();
@@ -31,32 +31,8 @@ export function ImportModal() {
     finally { setBusy(false); }
   }
 
-  async function chooseFiles() {
-    if (!window.chengjing) return;
-    setBusy(true);
-    setStatus(t("import.readingFiles"));
-    try {
-      const result = await window.chengjing.files.open({
-        title: t("import.dialogTitle"),
-        multiple: true,
-        metadataOnly: true,
-        filters: [
-          { name: t("import.supported"), extensions: ["pdf", "md", "txt", "html", "docx", "png", "jpg", "jpeg", "webp", "gif", "mp3", "m4a", "wav", "mp4", "mov", "webm"] },
-          { name: t("import.allFiles"), extensions: ["*"] },
-        ],
-      });
-      if (result.canceled) return;
-      const imported = [];
-      for (const file of result.files) {
-        const source = window.chengjing?.attachments ? new Blob([], { type: "application/octet-stream" }) : dataUrlToBlob(`data:application/octet-stream;base64,${file.data}`);
-        imported.push(await importFile(file.name, source, file.path));
-        setStatus(t("import.importingFile", { name: file.name }));
-      }
-      setStatus(t("import.filesDone", { count: imported.length }));
-      if (imported[0]) { setOpen(false); openCard(imported[0].id); }
-    } catch (error) { setStatus(error instanceof Error ? error.message : t("import.filesFailed")); }
-    finally { setBusy(false); }
-  }
+  // 檔案匯入改由共用 Workbench 負責：真正拖放、逐檔進度、警告與部分成功。
+  const fileImport = <ImportWorkbench onImported={(count) => { setStatus(t("import.filesDone", { count })); if (count === 1) setOpen(false); }} />;
 
   async function importBackup() {
     if (!window.chengjing) return;
@@ -80,7 +56,7 @@ export function ImportModal() {
             <div className="modal-tabs"><button type="button" className={tab === "url" ? "is-active" : ""} onClick={() => setTab("url")}><Globe2 size={15} />{t("import.url")}</button><button type="button" className={tab === "file" ? "is-active" : ""} onClick={() => setTab("file")}><FileText size={15} />{t("import.file")}</button><button type="button" className={tab === "backup" ? "is-active" : ""} onClick={() => setTab("backup")}><FileArchive size={15} />{t("import.backup")}</button></div>
             <div className="import-body">
               {tab === "url" && <form className="url-import" onSubmit={handleUrl}><div className="import-illustration"><Globe2 size={28} /><i /><i /></div><h3>{t("import.webTitle")}</h3><p>{t("import.webDescription")}</p><label><Link2 size={16} /><input type="url" required value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://…" /></label><button type="submit" className="primary-button" disabled={busy}>{busy ? <LoaderCircle size={16} className="spin" /> : <Download size={16} />}{busy ? t("import.capturingShort") : t("import.urlSubmit")}</button></form>}
-              {tab === "file" && <div className="file-import"><div className="drop-zone"><Upload size={28} /><h3>{t("import.fileTitle")}</h3><p>{t("import.fileDescription")}</p><button type="button" className="primary-button" disabled={busy} onClick={chooseFiles}>{busy ? <LoaderCircle size={16} className="spin" /> : <Upload size={16} />}{t("import.chooseFiles")}</button></div></div>}
+              {tab === "file" && <div className="file-import">{fileImport}</div>}
               {tab === "backup" && <div className="backup-grid"><button type="button" onClick={saveJsonBackup}><FileArchive size={22} /><span><b>{t("import.jsonBackup")}</b><small>{t("import.jsonDescription")}</small></span><Download size={16} /></button><button type="button" onClick={saveMarkdownArchive}><FileText size={22} /><span><b>{t("import.markdownBackup")}</b><small>{t("import.markdownDescription")}</small></span><Download size={16} /></button><button type="button" onClick={importBackup}><Upload size={22} /><span><b>{t("import.restore")}</b><small>{t("import.restoreDescription")}</small></span><Upload size={16} /></button></div>}
             </div>
             {status && <footer className="modal-status" role="status">{busy && <LoaderCircle size={14} className="spin" />}<span>{status}</span></footer>}
