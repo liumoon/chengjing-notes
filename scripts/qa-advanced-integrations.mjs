@@ -45,7 +45,13 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 120));
   }
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);
-  const page = browser.contexts()[0].pages()[0]; page.setDefaultTimeout(12_000); await page.getByText("今天想釐清什麼？").waitFor();
+  const page = browser.contexts()[0].pages()[0];
+  page.setDefaultTimeout(12_000);
+  page.addLocatorHandler(page.locator(".update-backdrop"), async (overlay) => {
+    const dismissButton = overlay.locator("button.secondary-button");
+    if (await dismissButton.isVisible().catch(() => false)) await dismissButton.click();
+  }, { times: 20, noWaitAfter: true });
+  await page.getByText("今天想釐清什麼？").waitFor();
   await page.getByRole("button", { name: "設定", exact: true }).click();
   const jumpNav = page.locator(".settings-jump-nav"); await jumpNav.waitFor(); const anchorCount = await jumpNav.getByRole("link").count();
   const anchorGeometry = await jumpNav.evaluate((element) => {
@@ -166,7 +172,7 @@ try {
     screenshots: ["/tmp/chengjing-settings-anchors.png", "/tmp/chengjing-settings-anchors-dark.png", "/tmp/chengjing-settings-anchors-narrow.png", "/tmp/chengjing-mcp-collapsed.png", "/tmp/chengjing-settings-openrouter.png", "/tmp/chengjing-settings-openrouter-models.png", "/tmp/chengjing-settings-gemma.png", "/tmp/chengjing-provider-settings.png", "/tmp/chengjing-mcp-settings.png"],
   };
   console.log(JSON.stringify(result, null, 2));
-  if (result.anchorCount !== 8 || !result.anchorScrollWorks || !result.anchorDisclosureWorks || !result.anchorNaturalWidth || !result.anchorNarrowScrollable || !result.anchorFits || result.engineChoiceCount !== 3 || !result.engineDisclosureWorks || !result.engineSurfaceHierarchy || !result.geminiPresetUpdated || !result.providerSaved || !result.providerEncrypted || !result.providerChatWorks || !result.providerResponsesWorks || !result.providerGeometry.fits || !result.mcpGeometry.fits || !result.fiveLanguageFits || !result.coreTools || !result.readOnlyBlocksWrites || !result.rendererBridgeWrite || result.auditSuccesses < 2) process.exitCode = 1;
+  if (result.anchorCount !== 9 || !result.anchorScrollWorks || !result.anchorDisclosureWorks || !result.anchorNaturalWidth || !result.anchorNarrowScrollable || !result.anchorFits || result.engineChoiceCount !== 3 || !result.engineDisclosureWorks || !result.engineSurfaceHierarchy || !result.geminiPresetUpdated || !result.providerSaved || !result.providerEncrypted || !result.providerChatWorks || !result.providerResponsesWorks || !result.providerGeometry.fits || !result.mcpGeometry.fits || !result.fiveLanguageFits || !result.coreTools || !result.readOnlyBlocksWrites || !result.rendererBridgeWrite || result.auditSuccesses < 2) process.exitCode = 1;
 } catch (error) { console.error(error); console.error(output.slice(-2000)); process.exitCode = 1; }
 finally {
   await client?.close().catch(() => {}); if (browser) await browser.close().catch(() => {}); child.kill("SIGTERM"); await new Promise((resolve) => setTimeout(resolve, 300)); if (!child.killed) child.kill("SIGKILL"); await new Promise((resolve) => providerMock.close(resolve)); await fs.rm(tempData, { recursive: true, force: true });
