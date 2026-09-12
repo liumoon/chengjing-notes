@@ -11,6 +11,7 @@
 - 匯入與雙模式的進度、同意、警告與失敗文案提供繁中、簡中、英、日、韓五語，並新增文案完整性測試。
 - 測試：新增固定 DOCX／HTML／PDF fixture 的匯入測試、安全測試（script、`onerror`、`javascript:`、私有 IP、路徑穿越）、核取清單 ID 往返測試與五語文案測試。
 - 自訂 AI Provider 的 HTTP 連線放寬至 localhost、loopback、RFC1918 私有網段與 IPv6 ULA；Android 同步允許私有區域網路 HTTP，仍拒絕公開網路的 HTTP Provider。
+- 2026-09-12 完成 Apple Silicon macOS 封裝驗收：主程式、選單列／快速記錄、⌘\ 快捷鍵、標題列、響應式版面、持久化、附件、AI、本地備份、DMG 與 ad-hoc 簽章驗證均通過；正式 Developer ID 簽章、公證與含正式 OAuth client 的發佈包仍待完成。
 
 ## 0.9.5 — 2026-09-06
 

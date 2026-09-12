@@ -110,7 +110,7 @@ The macOS build is currently ad-hoc signed and is not notarized with an Apple De
 - The server binds only to `127.0.0.1`, validates Host and Origin, uses a separate encrypted token, limits request size, and is never exposed to the LAN or internet.
 - Permanent deletion is not exposed. Existing items require their latest `updatedAt` value before an update, and each external write becomes one undoable ChengJing action.
 - Advanced users can save and switch among OpenAI-compatible gateways and Ollama. Ollama defaults to `http://127.0.0.1:11434/v1`.
-- Remote gateways require HTTPS; HTTP is limited to loopback. Provider keys are encrypted locally and excluded from backups.
+- Remote gateways require HTTPS; HTTP is limited to `localhost`, loopback, RFC1918 private ranges, or IPv6 ULA. Provider keys are encrypted locally and excluded from backups.
 
 ### v0.8.2: compact Google button spacing
 
@@ -247,14 +247,24 @@ npm run qa:live-google-backup
 npm run qa:task-timeline
 npm run smoke:electron-main
 npm run smoke:electron
+npm run qa:macos-package
 npm run dist:mac
 ```
 
 The current validation suite covers TypeScript, frontend and Electron tests, persistence, version comparison, release parsing, DMG selection, dark/light/ink themes, responsive layouts, whiteboard interactions, Second Brain flows, database and tag operations, five-language UI, backups, update fallbacks, WebGPU, encrypted local storage, and packaged-app startup.
 
+### macOS Apple Silicon acceptance (2026-09-12)
+
+- The packaged Apple Silicon app passed main-process smoke tests, Menu Bar and Quick Capture checks, the default ⌘\ global shortcut, native title-bar behavior, and responsive Topbar layout checks.
+- Card persistence after reload, attachment handling, AI Provider connection paths, local backup flows, and installed-app performance were verified. The performance check used a temporary test OAuth secret; no secret was written to source code or release artifacts.
+- The DMG was built, mounted, verified, and detached successfully. `codesign --verify --deep --strict` passed. The full test result was 56 test files / 248 frontend tests plus 79 Electron Node tests passing.
+- The macOS package is still ad-hoc signed and not notarized with an Apple Developer ID. This confirms local packaging and functional acceptance, not a Gatekeeper-warning-free formal release.
+- `npm run qa:macos-package` is available for repeatable checks against an existing DMG and Apple Silicon app, including architecture, code signing, DMG mount/detach, app startup, and sensitive-file checks. Add `--formal` to require Developer ID signing, the OAuth runtime, and a notarization staple on either the app or DMG.
+- For a formal macOS release, import the OAuth client JSON with `scripts/import-google-oauth-client.mjs`, install a Developer ID Application certificate, configure an `xcrun notarytool` profile, and run `npm run check:macos-release` with `CHENGJING_NOTARY_PROFILE`. Run `npm run dist:mac` only after the preflight passes. OAuth clients, certificates, and runtime secrets must not be committed to Git.
+
 ## Current boundaries
 
-- This is a local-first single-user desktop app. Google accounts are used only for private backup; ChengJing does not provide its own account system, real-time multiplayer collaboration, or a mobile app.
+- This is a local-first single-user desktop app. Google accounts are used only for private backup; ChengJing does not provide its own account system or real-time multiplayer collaboration. The Android client and its limitations are documented in [ANDROID.md](ANDROID.md).
 - Daily reflection is a text aid for review, not medical or psychological diagnosis, and does not claim to read personality or the subconscious directly.
 - Media cards can store media, subtitles, and notes; a separate built-in Whisper model is not included.
 - URL import is currently used instead of a browser Web Clipper. A separate Chrome extension may be added later.

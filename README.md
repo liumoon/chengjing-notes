@@ -109,7 +109,7 @@ Windows ARM 電腦請下載 ARM64；一般 Intel／AMD 電腦請下載 x64。目
 - 連線只綁定本機 `127.0.0.1`，並使用獨立加密權杖、Host／Origin 驗證與請求大小限制；不會把伺服器公開到區域網路或網際網路。
 - MCP 不提供永久刪除；修改既有項目必須先讀取並帶入最新版本時間，避免覆蓋同時發生的使用者編輯。每次外部寫入都能在澄境復原。
 - 進階使用者可建立多組 OpenAI 相容 Gateway 或 Ollama 連線，切換名稱、API 位址、模型與金鑰；Ollama 預設使用官方 OpenAI 相容位址 `http://127.0.0.1:11434/v1`。
-- 遠端 Gateway 必須使用 HTTPS，HTTP 只允許這台電腦的 loopback；API Key 加密留在本機，不進入 Google 或本地備份。
+- 遠端 Gateway 必須使用 HTTPS；HTTP 只允許 `localhost`、loopback、RFC1918 私有網段或 IPv6 ULA；API Key 加密留在本機，不進入 Google 或本地備份。
 
 ## v0.8.2 Google 登入按鈕精簡留白
 
@@ -750,6 +750,7 @@ npm run qa:advanced-integrations
 npm run qa:task-timeline
 npm run smoke:electron-main
 npm run smoke:electron
+npm run qa:macos-package
 npm run dist:mac
 ```
 
@@ -779,9 +780,18 @@ npm run dist:mac
 - 更新備援專項驗收：GitHub API 跳過／限流路徑、Cloudflare Worker、Atom Feed、SHA-256、邊緣 HIT/MISS 與 KV 最後可靠版本全部通過
 - DMG checksum 與 App ad-hoc 簽章驗證通過
 
+### macOS Apple Silicon 驗收（2026-09-12）
+
+- 已使用封裝後的 Apple Silicon App 完成主程式 smoke test、選單列／快速記錄、預設 ⌘\ 全域快捷鍵、原生標題列與 Topbar 響應式版面驗收。
+- 已驗證卡片重新載入持久化、附件處理、AI Provider 連線路徑、本地備份流程與安裝後效能；效能測試使用暫時測試 OAuth secret，沒有寫入原始碼或發佈產物。
+- DMG 已完成建置、掛載、內容驗證與卸載；`codesign --verify --deep --strict` 通過。完整測試結果為 56 個測試檔／248 個前端測試，以及 79 個 Electron Node 測試通過。
+- 目前 macOS 發佈包仍是 ad-hoc 簽章，尚未使用 Apple Developer ID 公證；因此這次是本機封裝與功能驗收，不代表可免除 Gatekeeper 警告的正式發佈。
+- 已新增 `npm run qa:macos-package`，可針對既有 DMG 與 Apple Silicon App 重複執行架構、簽章、DMG 掛載／卸載、App 啟動與敏感檔案檢查；加上 `--formal` 會再要求 Developer ID、OAuth runtime 與 App 或 DMG 已完成 notarization stapling。
+- 要建立正式 macOS 發佈包，需先以 `scripts/import-google-oauth-client.mjs` 匯入 OAuth client JSON、安裝 Developer ID Application 憑證、設定 `xcrun notarytool` profile，並以 `CHENGJING_NOTARY_PROFILE` 執行 `npm run check:macos-release`；檢查通過後再執行 `npm run dist:mac`。OAuth client、憑證與 runtime secret 不應提交到 Git。
+
 ## 目前刻意保留的邊界
 
-- 這是本機優先單人版；Google 帳號只用於私人備份，沒有澄境自建帳號、即時多人協作與手機版。
+- 這是本機優先單人版；Google 帳號只用於私人備份，沒有澄境自建帳號與即時多人協作；Android 客戶端與其限制請見 [Android 說明](ANDROID.md)。
 - 第二大腦的每日反思是協助回看的文字線索，不是醫療或心理診斷，也不宣稱能直接讀懂人格或潛意識。
 - 影音卡片可以保存媒體、字幕與筆記；尚未內建另一套 Whisper 語音模型自動轉錄。
 - 現有 URL 匯入取代瀏覽器 Web Clipper；若需要，可以再製作獨立 Chrome 擴充功能。
