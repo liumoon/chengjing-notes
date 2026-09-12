@@ -111,8 +111,50 @@ async function listProviderModels(fetchImpl, rawProfile) {
 }
 
 async function testProvider(fetchImpl, profile) {
-  const models = await listProviderModels(fetchImpl, profile);
-  return { ok: true, models, modelAvailable: models.some((model) => model.id === profile.model) };
+  let normalized;
+  try {
+    normalized = { ...profile, baseUrl: normalizeBaseUrl(profile.baseUrl, profile.type) };
+  } catch (error) {
+    return {
+      ok: false,
+      models: [],
+      modelAvailable: false,
+      diagnostics: { stage: "url", code: String(error?.message || "provider-base-url-invalid") },
+    };
+  }
+  const model = String(normalized.model || "").trim();
+  if (!model) {
+    return {
+      ok: false,
+      models: [],
+      modelAvailable: false,
+      diagnostics: { stage: "model", code: "provider-model-required", model },
+    };
+  }
+  const modelsEndpoint = endpoint(normalized.baseUrl, "models");
+  try {
+    const models = await listProviderModels(fetchImpl, normalized);
+    const modelAvailable = models.some((item) => item.id === model);
+    return {
+      ok: modelAvailable,
+      models,
+      modelAvailable,
+      diagnostics: modelAvailable
+        ? { stage: "ok", code: "provider-ok", endpoint: modelsEndpoint, model }
+        : { stage: "model", code: "provider-model-not-found", endpoint: modelsEndpoint, model },
+    };
+  } catch (error) {
+    const code = String(error?.message || "provider-unavailable");
+    const statusMatch = /^provider-http-(\d+)/.exec(code);
+    const status = statusMatch ? Number(statusMatch[1]) : undefined;
+    const stage = status === 404 ? "api-path" : status ? "http" : code === "provider-timeout" ? "connection" : "connection";
+    return {
+      ok: false,
+      models: [],
+      modelAvailable: false,
+      diagnostics: { stage, code, ...(status ? { status } : {}), endpoint: modelsEndpoint, model },
+    };
+  }
 }
 
 async function providerChat(fetchImpl, rawProfile, request = {}) {

@@ -30,7 +30,7 @@ export function SyncConflictReview({ records, language }: { records: SyncRecord[
   return <details className="sync-conflict-review">
     <summary><CopyCheck size={19}/><span><b>{zh?"復原同步前的內容":"Recover earlier content"}</b><small>{zh?"僅供救援，日常同步不需要使用":"For recovery only — no action needed for everyday sync"}</small></span><ChevronDown size={17}/></summary>
     <div><p className="sync-recovery-hint">{zh?"澄境已自動採用最新修改。只有發現重要內容遺失時，才需要從這裡找回舊版本。":"ChengJing has already applied the latest edits. Open an older version here only if important content is missing."}</p>{records.map(record=>{const label=syncRecordLabel(record,zh);const winner=materializedHead(record.heads);return <details className="sync-conflict" key={record.id}>
-      <summary><span><b>{label.name}</b><small>{label.kind}</small></span><ChevronDown size={17}/></summary>
+      <summary><span><b>{label.name}</b><small>{label.kind}{label.context ? ` · ${label.context}` : ""}</small></span><ChevronDown size={17}/></summary>
       {(record.recovery||[]).filter(head=>head.id!==winner.id).sort((a,b)=>operationTime(b)-operationTime(a)).map((head,index)=><article key={head.id}><header><b>{operationTime(head)>0?new Intl.DateTimeFormat(language,{dateStyle:"medium",timeStyle:"short"}).format(operationTime(head)):(zh?`舊版本 ${index+1}`:`Earlier version ${index+1}`)}</b></header><p>{syncVersionText(head,zh)}</p>
         {typeof head.value?.dueAt==="number"&&<small className="sync-version-detail">{zh?"截止時間":"Due"} · {new Intl.DateTimeFormat(language,{dateStyle:"medium",timeStyle:"short"}).format(head.value.dueAt)}</small>}
         {typeof head.value?.done==="boolean"&&<small className="sync-version-detail">{head.value.done?(zh?"已完成":"Completed"):(zh?"未完成":"Not completed")}</small>}

@@ -6,9 +6,11 @@ import { useI18n } from "../hooks/useI18n";
 import { importWebUrl } from "../lib/importers";
 import { ImportWorkbench } from "./ImportWorkbench";
 import { restoreLocalBackup, saveJsonBackup, saveMarkdownArchive } from "../lib/backup";
+import { backupInspectionMessage, getBackupInspectionCopy } from "../lib/backupInspectionCopy";
+import { inspectBackup } from "../lib/backupValidation";
 
 export function ImportModal() {
-  const { t } = useI18n();
+  const { language, t } = useI18n();
   const open = useAppStore((state) => state.importOpen);
   const setOpen = useAppStore((state) => state.setImportOpen);
   const openCard = useAppStore((state) => state.openCard);
@@ -41,7 +43,17 @@ export function ImportModal() {
     setBusy(true);
     try {
       const bytes = Uint8Array.from(atob(result.files[0].data), (char) => char.charCodeAt(0));
-      if (!await restoreLocalBackup(new TextDecoder().decode(bytes), result.files[0].path)) return;
+      const raw = new TextDecoder().decode(bytes);
+      const inspection = inspectBackup(JSON.parse(raw));
+      const copy = getBackupInspectionCopy(language);
+      const summary = [
+        `${copy.title}：${copy.version(inspection.version)}`,
+        [copy.cards(inspection.cardCount), copy.attachments(inspection.attachmentCount), copy.tasks(inspection.taskCount), copy.boards(inspection.boardCount)].join(" · "),
+        backupInspectionMessage(inspection, language),
+      ].join("\n");
+      setStatus(summary);
+      if (!window.confirm(`${summary}\n\n${copy.confirm}`)) return;
+      if (!await restoreLocalBackup(raw, result.files[0].path, true)) return;
       setStatus(t("import.backupRestored"));
     } catch (error) { setStatus(error instanceof Error ? error.message : t("import.backupFailed")); }
     finally { setBusy(false); }

@@ -44,6 +44,7 @@ import { CloudBackupImport } from "../components/CloudBackupImport";
 import { AndroidUpdateSettings } from "../components/AndroidUpdateSettings";
 import { SettingsJumpNav } from "../components/SettingsJumpNav";
 import { getSettingsDisclosureCopy } from "../lib/settingsAnchorCopy";
+import { AttachmentHealthPanel } from "../components/AttachmentHealthPanel";
 
 const FEATURED_MODELS = [
   { id: "openai/gpt-5.6-luna", label: "GPT-5.6 Luna", note: "settings.modelDefault" as MessageKey },
@@ -255,6 +256,7 @@ export function SettingsView() {
       </section>
 
       <section className="settings-section" id="backup-settings">
+        <AttachmentHealthPanel />
         <AutoBackupSettingsPanel />
         {window.chengjing?.sync && <CloudBackupImport />}
       </section>

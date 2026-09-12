@@ -9,8 +9,20 @@ const kinds: Record<string, [string,string]> = {
 };
 export function syncRecordLabel(record: SyncRecord, zh: boolean) {
   const value=materializedHead(record.heads).value || record.recovery?.find(head=>head.value)?.value || record.heads.find(head=>head.value)?.value;
-  const kind=(kinds[record.heads[0].table] || ["內容","Content"])[zh?0:1];
+  const table = record.heads[0]?.table || "";
+  const kind=(kinds[table] || ["內容","Content"])[zh?0:1];
   const name=[value?.title,value?.name,value?.text,value?.plainText].find(item=>typeof item==="string"&&item.trim());
+  if (table === "attachments" && value) {
+    const role = value.role === "inline" ? (zh ? "內嵌圖片" : "Inline image")
+      : value.role === "source" ? (zh ? "來源文件" : "Source file")
+        : (zh ? "一般附件" : "Attachment");
+    const mime = typeof value.mime === "string" ? value.mime : "";
+    return {
+      kind,
+      name: typeof name==="string" ? name.replace(/\s+/g," ").trim().slice(0,100) : kind,
+      context: [role, mime].filter(Boolean).join(" · "),
+    };
+  }
   return {kind,name:typeof name==="string"?name.replace(/\s+/g," ").trim().slice(0,100):kind};
 }
 export function syncVersionText(head: SyncOperation, zh: boolean) {

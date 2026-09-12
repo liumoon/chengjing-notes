@@ -8,6 +8,7 @@ import { syncEnabled } from "../lib/syncJournal";
 import type { SyncRecord } from "../lib/syncProtocol";
 import { useI18n } from "../hooks/useI18n";
 import { getSyncActivity, subscribeSyncActivity, reportSyncActivity, syncStatusKind } from "../lib/syncActivity";
+import { getSyncCopy } from "../lib/syncCopy";
 import "./sync-settings.css";
 import { SyncConflictReview } from "./SyncConflictReview";
 
@@ -46,11 +47,16 @@ export function SyncSettings() {
   const { language } = useI18n(); const zh = language.startsWith("zh");
   const [enabled, setEnabled] = useState(syncEnabled); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const activity = useSyncExternalStore(subscribeSyncActivity, getSyncActivity);
-  const pending = useLiveQuery(() => db.table("syncOutbox").count(), [], 0);
+  const pending = useLiveQuery(async () => {
+    const operations = await db.table("syncOutbox").toArray() as Array<{ table?: string }>;
+    return { total: operations.length, attachments: operations.filter((operation) => operation.table === "attachments").length };
+  }, [], { total: 0, attachments: 0 });
   const conflicts = useLiveQuery(() => db.table("syncRecords").filter((row: SyncRecord) => Boolean(row.recovery?.length)).toArray() as Promise<SyncRecord[]>, [], []);
   const working = busy || activity.phase === "syncing";
   const message = error || (activity.phase === "error" ? activity.error : "");
-  const kind = syncStatusKind(enabled, working, message, pending, activity.lastSuccessAt);
+  const kind = syncStatusKind(enabled, working, message, pending.total, activity.lastSuccessAt);
+  const syncCopy = getSyncCopy(language);
+  const errorCategory = activity.errorKind ? syncCopy.category[activity.errorKind] : "";
   const labels = zh ? {
     working:["正在同步", ""], error:["同步尚未完成", "資料仍保存在這台裝置，請稍後再試。"],
     paused:["同步已暫停", ""], pending:["等待同步", "內容已保存在這台裝置。"],
@@ -81,10 +87,14 @@ export function SyncSettings() {
     <div className={`sync-state is-${kind}`} role="status" aria-live="polite" aria-busy={working}>
       <StatusIcon size={21} className={working?"spin":""}/><div><b>{labels[kind][0]}</b>{labels[kind][1]&&<p>{labels[kind][1]}</p>}{activity.lastSuccessAt>0&&<small>{zh?"上次完成":"Last completed"} · {new Intl.DateTimeFormat(language,{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}).format(activity.lastSuccessAt)}</small>}</div>
     </div>
+    <div className="sync-pending-summary" role="status" aria-live="polite">
+      <span><b>{pending.total ? syncCopy.pending(pending.total) : syncCopy.noPending}</b>{pending.attachments > 0 && <small>{syncCopy.pendingAttachments(pending.attachments)}</small>}</span>
+      {pending.attachments > 0 && <small>{syncCopy.attachmentHint}</small>}
+    </div>
     <div className="sync-actions"><button type="button" className="primary-button" disabled={working} onClick={()=>void(enabled?run():connect())}><RefreshCw size={17} className={working?"spin":""}/><span>{working?(zh?"正在同步…":"Syncing…"):enabled?(zh?"立即同步":"Sync now"):(zh?"啟用 Google 同步":"Enable Google sync")}</span></button>
       {enabled&&<button type="button" className="sync-pause-button" onClick={()=>void pause()}><Pause size={15}/><span>{zh?"暫停同步":"Pause sync"}</span></button>}
     </div>
-    {message&&<div className="sync-error" role="alert"><AlertTriangle size={16}/><p>{message}</p></div>}
+    {message&&<div className="sync-error" role="alert"><AlertTriangle size={16}/><div><b>{errorCategory || syncCopy.errorTitle}</b>{message&&<p>{activity.errorDetail || message}</p>}<small>{activity.errorRetryable ? syncCopy.retry : syncCopy.noRetry}</small></div></div>}
     <SyncConflictReview records={conflicts} language={language}/>
   </section>;
 }

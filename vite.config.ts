@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
@@ -11,6 +11,15 @@ export default defineConfig({
   worker: {
     format: "es",
   },
+  test: {
+    environment: "jsdom",
+    environmentOptions: {
+      jsdom: {
+        url: "http://localhost",
+      },
+    },
+    setupFiles: ["./src/testSetup.ts"],
+  },
   optimizeDeps: {
     exclude: ["@huggingface/transformers"],
   },
@@ -19,4 +28,3 @@ export default defineConfig({
     chunkSizeWarningLimit: 2500,
   },
 });
-

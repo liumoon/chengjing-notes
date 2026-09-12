@@ -337,6 +337,23 @@ export interface AIProviderModel {
   name: string;
 }
 
+export type AIProviderDiagnosticStage = "url" | "connection" | "api-path" | "http" | "model" | "ok";
+
+export interface AIProviderDiagnostics {
+  stage: AIProviderDiagnosticStage;
+  code: string;
+  status?: number;
+  endpoint?: string;
+  model?: string;
+}
+
+export interface AIProviderTestResult {
+  ok: boolean;
+  models: AIProviderModel[];
+  modelAvailable: boolean;
+  diagnostics?: AIProviderDiagnostics;
+}
+
 export type McpAccessMode = "read-only" | "ask" | "allow";
 
 export interface McpSettings {

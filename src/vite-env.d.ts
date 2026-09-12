@@ -85,7 +85,7 @@ interface Window {
       upsertProvider: (input: { id?: string; name: string; type: import("./types").AIProviderType; apiMode: import("./types").AIProviderApiMode; baseUrl: string; model: string; apiKey?: string; select?: boolean }) => Promise<import("./types").AIProviderSettings>;
       selectProvider: (id: string) => Promise<import("./types").AIProviderSettings>;
       removeProvider: (id: string) => Promise<import("./types").AIProviderSettings>;
-      testProvider: (id: string) => Promise<{ ok: boolean; models: import("./types").AIProviderModel[]; modelAvailable: boolean }>;
+      testProvider: (id: string) => Promise<import("./types").AIProviderTestResult>;
       listProviderModels: (id: string) => Promise<import("./types").AIProviderModel[]>;
       providerChat: (request: {
         profileId?: string;

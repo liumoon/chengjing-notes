@@ -432,11 +432,15 @@ export async function importDocument(input: ImportFileInput, options: ImportOpti
     };
   } catch (error) {
     // 只回收這一份文件的附件，同批其他已成功的卡片不受影響。
-    for (const attachment of created) await removeStoredAttachment(attachment).catch(() => {});
+    let cleanupFailures = 0;
+    for (const attachment of created) {
+      try { await removeStoredAttachment(attachment); }
+      catch { cleanupFailures += 1; }
+    }
     options.onProgress?.({ index, total, name: input.name, stage: "failed" });
     const message = error instanceof Error ? error.message : "";
     const friendly = /password|encrypt/i.test(message) ? copy.errorEncrypted : /corrupt|invalid|ENOENT|unreadable/i.test(message) ? copy.errorCorrupted : copy.errorParse;
-    return fail(input.name, kind, friendly, [], [message || "parse-failed"]);
+    return fail(input.name, kind, friendly, [], [message || "parse-failed", ...(cleanupFailures ? [`cleanup-failed:${cleanupFailures}`] : [])]);
   }
 }
 

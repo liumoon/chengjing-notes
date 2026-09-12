@@ -13,4 +13,13 @@ function providerHttpError(code, language) {
   const reason = [401, 403].includes(status) ? copy.auth : status === 404 ? copy.missing : status === 429 ? copy.rate : status >= 500 ? copy.server : copy.rejected;
   return match[2]?.trim() ? `${reason} (${match[2].trim()})` : reason;
 }
-module.exports = { providerHttpError };
+function providerDiagnosticError(code, language) {
+  const copy = messages[language] || messages.en;
+  if (code === "provider-timeout") return copy.server;
+  if (code === "provider-model-not-found") return copy.missing;
+  if (code === "provider-model-required") return copy.missing;
+  if (code === "provider-base-url-invalid" || code === "provider-insecure-remote-url") return copy.rejected;
+  if (/^(provider-|fetch failed|net::)/i.test(code)) return copy.server;
+  return null;
+}
+module.exports = { providerHttpError, providerDiagnosticError };

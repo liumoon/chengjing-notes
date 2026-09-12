@@ -31,6 +31,58 @@ export function getAdvancedProviderCopy(language: AppLanguage) {
   return copy[language] || copy.en;
 }
 
+const diagnosticCopy = {
+  "zh-TW": {
+    title: "連線診斷",
+    healthy: (model: string) => `連線與模型正常：${model}`,
+    url: "網址格式或安全規則不正確。",
+    connection: "無法建立連線，請確認服務、IP、連接埠與防火牆。",
+    apiPath: "服務已回應，但 API 路徑不正確。請確認網址是否包含正確的 /v1。",
+    http: (status: number) => `服務回應 HTTP ${status}，請檢查金鑰、權限或服務設定。`,
+    model: (model: string) => `服務可連線，但找不到模型「${model}」。請確認模型 ID 已安裝或可用。`,
+  },
+  "zh-CN": {
+    title: "连接诊断",
+    healthy: (model: string) => `连接和模型正常：${model}`,
+    url: "地址格式或安全规则不正确。",
+    connection: "无法建立连接，请检查服务、IP、端口和防火墙。",
+    apiPath: "服务已响应，但 API 路径不正确。请确认地址是否包含正确的 /v1。",
+    http: (status: number) => `服务返回 HTTP ${status}，请检查密钥、权限或服务设置。`,
+    model: (model: string) => `服务可连接，但找不到模型“${model}”。请确认模型 ID 已安装或可用。`,
+  },
+  en: {
+    title: "Connection diagnostics",
+    healthy: (model: string) => `Connection and model are ready: ${model}`,
+    url: "The URL format or security policy is invalid.",
+    connection: "Could not establish a connection. Check the service, IP, port, and firewall.",
+    apiPath: "The service responded, but the API path is incorrect. Confirm that the URL includes the correct /v1 path.",
+    http: (status: number) => `The service returned HTTP ${status}. Check the API key, permissions, or service settings.`,
+    model: (model: string) => `The service is reachable, but model “${model}” was not found. Confirm that the model ID is installed or available.`,
+  },
+  ja: {
+    title: "接続診断",
+    healthy: (model: string) => `接続とモデルは正常です：${model}`,
+    url: "URL形式またはセキュリティ規則が正しくありません。",
+    connection: "接続できません。サービス、IP、ポート、ファイアウォールを確認してください。",
+    apiPath: "サービスは応答しましたが、APIパスが正しくありません。URLに正しい /v1 が含まれるか確認してください。",
+    http: (status: number) => `サービスがHTTP ${status}を返しました。キー、権限、サービス設定を確認してください。`,
+    model: (model: string) => `サービスには接続できますが、モデル「${model}」が見つかりません。モデルIDを確認してください。`,
+  },
+  ko: {
+    title: "연결 진단",
+    healthy: (model: string) => `연결과 모델이 정상입니다: ${model}`,
+    url: "URL 형식 또는 보안 규칙이 올바르지 않습니다.",
+    connection: "연결할 수 없습니다. 서비스, IP, 포트, 방화벽을 확인하세요.",
+    apiPath: "서비스는 응답했지만 API 경로가 올바르지 않습니다. URL에 올바른 /v1이 포함되었는지 확인하세요.",
+    http: (status: number) => `서비스가 HTTP ${status}를 반환했습니다. 키, 권한 또는 서비스 설정을 확인하세요.`,
+    model: (model: string) => `서비스에는 연결되지만 모델 '${model}'을 찾을 수 없습니다. 모델 ID를 확인하세요.`,
+  },
+} as const;
+
+export function getProviderDiagnosticCopy(language: AppLanguage) {
+  return diagnosticCopy[language] || diagnosticCopy.en;
+}
+
 const apiModeCopy = {
   "zh-TW": { label: "API 模式", chat: "Chat Completions", chatHint: "相容範圍最廣", responses: "Responses API", responsesHint: "新式輸入與結構化輸出", privacy: "遠端 Responses 請求固定使用 store: false；Ollama 使用非狀態式模式。" },
   "zh-CN": { label: "API 模式", chat: "Chat Completions", chatHint: "兼容范围最广", responses: "Responses API", responsesHint: "新式输入与结构化输出", privacy: "远程 Responses 请求固定使用 store: false；Ollama 使用无状态模式。" },

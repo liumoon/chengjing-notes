@@ -62,6 +62,7 @@ export interface ImportCopy {
   errorNetwork: string;
   errorTimeout: string;
   errorUnsupportedType: string;
+  warningCleanupFailed: string;
   sourceAttachment: string;
   inlineImage: string;
   plainAttachment: string;
@@ -90,7 +91,7 @@ const zhTW: ImportCopy = {
   warningUnsupported: "不支援的檔案格式，已保留為一般附件。", warningMammoth: "Word 文件部分內容無法解析：{detail}",
   warningMarkdownFallback: "Markdown 引擎降級，格式可能簡化。", warningTasksRecreated: "{count} 個待辦無法對應，已建立新的識別。",
   errorCorrupted: "檔案已損毀，無法解析。", errorEncrypted: "檔案已加密，請先解除密碼保護。", errorParse: "解析失敗。", errorSave: "保存失敗。",
-  errorNetwork: "網路連線失敗。", errorTimeout: "下載逾時。", errorUnsupportedType: "不支援的檔案類型。",
+  errorNetwork: "網路連線失敗。", errorTimeout: "下載逾時。", errorUnsupportedType: "不支援的檔案類型。", warningCleanupFailed: "匯入失敗後有附件未能清理，請使用附件健康中心檢查。",
   sourceAttachment: "原始文件", inlineImage: "內嵌圖片", plainAttachment: "附件",
   exportMarkdown: "匯出 Markdown", exportMarkdownDone: "已匯出 {name}。", exportMarkdownFailed: "匯出 Markdown 失敗。", exportZip: "含圖片的 ZIP",
 };
@@ -139,7 +140,7 @@ const en: ImportCopy = {
   warningUnsupported: "Unsupported format; kept as a plain attachment.", warningMammoth: "Some Word content could not be parsed: {detail}",
   warningMarkdownFallback: "Markdown engine fell back; formatting may be simplified.", warningTasksRecreated: "{count} tasks could not be matched and got new identifiers.",
   errorCorrupted: "The file is corrupted and could not be parsed.", errorEncrypted: "The file is encrypted. Remove the password first.", errorParse: "Parsing failed.", errorSave: "Saving failed.",
-  errorNetwork: "Network request failed.", errorTimeout: "Download timed out.", errorUnsupportedType: "Unsupported file type.",
+  errorNetwork: "Network request failed.", errorTimeout: "Download timed out.", errorUnsupportedType: "Unsupported file type.", warningCleanupFailed: "Some attachments could not be cleaned up after the import failed. Check the attachment health center.",
   sourceAttachment: "Source document", inlineImage: "Inline image", plainAttachment: "Attachment",
   exportMarkdown: "Export Markdown", exportMarkdownDone: "Exported {name}.", exportMarkdownFailed: "Markdown export failed.", exportZip: "ZIP with images",
 };
@@ -163,7 +164,7 @@ const ja: ImportCopy = {
   warningUnsupported: "未対応の形式のため、通常の添付として保存しました。", warningMammoth: "Word の一部を解析できませんでした：{detail}",
   warningMarkdownFallback: "Markdown エンジンがフォールバックし、書式が簡略化される場合があります。", warningTasksRecreated: "{count} 件のタスクを対応付けできず、新しい識別子を作成しました。",
   errorCorrupted: "ファイルが破損しており解析できません。", errorEncrypted: "ファイルが暗号化されています。パスワードを解除してください。", errorParse: "解析に失敗しました。", errorSave: "保存に失敗しました。",
-  errorNetwork: "ネットワーク接続に失敗しました。", errorTimeout: "ダウンロードがタイムアウトしました。", errorUnsupportedType: "未対応のファイル形式です。",
+  errorNetwork: "ネットワーク接続に失敗しました。", errorTimeout: "ダウンロードがタイムアウトしました。", errorUnsupportedType: "未対応のファイル形式です。", warningCleanupFailed: "取り込み失敗後に整理できない添付がありました。添付ファイルの状態センターを確認してください。",
   sourceAttachment: "原本ドキュメント", inlineImage: "インライン画像", plainAttachment: "添付ファイル",
   exportMarkdown: "Markdown を書き出す", exportMarkdownDone: "{name} を書き出しました。", exportMarkdownFailed: "Markdown の書き出しに失敗しました。", exportZip: "画像を含む ZIP",
 };
@@ -187,7 +188,7 @@ const ko: ImportCopy = {
   warningUnsupported: "지원하지 않는 형식이므로 일반 첨부로 보관했습니다.", warningMammoth: "Word 내용의 일부를 분석할 수 없습니다: {detail}",
   warningMarkdownFallback: "Markdown 엔진이 대체 경로로 동작하여 서식이 단순화될 수 있습니다.", warningTasksRecreated: "{count}개 할 일을 대응하지 못해 새 식별자를 만들었습니다.",
   errorCorrupted: "파일이 손상되어 분석할 수 없습니다.", errorEncrypted: "파일이 암호화되어 있습니다. 먼저 비밀번호를 해제하세요.", errorParse: "분석에 실패했습니다.", errorSave: "저장에 실패했습니다.",
-  errorNetwork: "네트워크 연결에 실패했습니다.", errorTimeout: "다운로드 시간이 초과되었습니다.", errorUnsupportedType: "지원하지 않는 파일 형식입니다.",
+  errorNetwork: "네트워크 연결에 실패했습니다.", errorTimeout: "다운로드 시간이 초과되었습니다.", errorUnsupportedType: "지원하지 않는 파일 형식입니다.", warningCleanupFailed: "가져오기 실패 후 일부 첨부를 정리하지 못했습니다. 첨부 파일 상태 센터를 확인하세요.",
   sourceAttachment: "원본 문서", inlineImage: "본문 이미지", plainAttachment: "첨부 파일",
   exportMarkdown: "Markdown 내보내기", exportMarkdownDone: "{name}을(를) 내보냈습니다.", exportMarkdownFailed: "Markdown 내보내기에 실패했습니다.", exportZip: "이미지가 포함된 ZIP",
 };
@@ -219,5 +220,6 @@ export function importWarningCopy(language: AppLanguage, code: string): string {
   if (code === "svg-sanitized") return copy.warningSvgSanitized;
   if (code.startsWith("mammoth:")) return copy.warningMammoth.replace("{detail}", code.slice("mammoth:".length).trim() || code);
   if (code === "unsupported") return copy.warningUnsupported;
+  if (code.startsWith("cleanup-failed:")) return copy.warningCleanupFailed;
   return code;
 }

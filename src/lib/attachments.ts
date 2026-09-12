@@ -40,19 +40,30 @@ export function inferAttachmentMime(name: string, provided = "") {
 export async function persistAttachment(name: string, blob: Blob, mime: string, sourcePath?: string, role?: AttachmentRole): Promise<AttachmentRecord> {
   const id = crypto.randomUUID();
   const createdAt = Date.now();
-  let attachment: AttachmentRecord;
-  if (window.chengjing?.attachments) {
-    attachment = sourcePath
-      ? await window.chengjing.attachments.importPath({ id, sourcePath, name, mime, createdAt })
-      : await window.chengjing.attachments.importData({ id, data: base64FromDataUrl(await blobToDataUrl(blob)), name, mime, createdAt });
-  } else {
-    const storedBlob = blob.type === mime ? blob : blob.slice(0, blob.size, mime);
-    attachment = { id, name, mime, size: storedBlob.size, blob: storedBlob, storage: "indexeddb", createdAt };
+  let attachment: AttachmentRecord | undefined;
+  try {
+    if (window.chengjing?.attachments) {
+      attachment = sourcePath
+        ? await window.chengjing.attachments.importPath({ id, sourcePath, name, mime, createdAt })
+        : await window.chengjing.attachments.importData({ id, data: base64FromDataUrl(await blobToDataUrl(blob)), name, mime, createdAt });
+    } else {
+      const storedBlob = blob.type === mime ? blob : blob.slice(0, blob.size, mime);
+      attachment = { id, name, mime, size: storedBlob.size, blob: storedBlob, storage: "indexeddb", createdAt };
+    }
+    // role 是可選欄位：桌面與 Android 橋接不認識它時，在本機補上就好。
+    attachment = { ...attachment, role: role || attachment.role || "attachment" };
+    await db.attachments.put(attachment);
+    return attachment;
+  } catch (error) {
+    // Native import writes the file before IndexedDB is updated. If the latter
+    // fails, remove the just-created file so a retry cannot leave an orphan.
+    if (attachment?.storage === "file" && attachment.relativePath) {
+      await window.chengjing?.attachments?.remove(attachment.relativePath).catch(() => {});
+    } else {
+      await db.attachments.delete(id).catch(() => {});
+    }
+    throw error;
   }
-  // role 是可選欄位：桌面與 Android 橋接不認識它時，在本機補上就好。
-  attachment = { ...attachment, role: role || attachment.role || "attachment" };
-  await db.attachments.put(attachment);
-  return attachment;
 }
 
 export async function migrateLegacyAttachment(attachment: AttachmentRecord) {

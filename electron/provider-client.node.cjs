@@ -16,12 +16,38 @@ test("OpenAI 相容 Provider 可列出模型並產生內容", async () => {
   const profile = { type: "ollama", baseUrl: "http://127.0.0.1:11434/v1", model: "qwen3:8b", apiKey: "" };
   const models = await listProviderModels(fetchImpl, profile);
   assert.deepEqual(models, [{ id: "qwen3:8b", name: "qwen3:8b" }, { id: "gemma3:4b", name: "Gemma 3" }]);
-  assert.deepEqual(await testProvider(fetchImpl, profile), { ok: true, models, modelAvailable: true });
+  assert.deepEqual(await testProvider(fetchImpl, profile), {
+    ok: true,
+    models,
+    modelAvailable: true,
+    diagnostics: {
+      stage: "ok",
+      code: "provider-ok",
+      endpoint: "http://127.0.0.1:11434/v1/models",
+      model: "qwen3:8b",
+    },
+  });
   const result = await providerChat(fetchImpl, profile, { messages: [{ role: "user", content: "整理" }], responseFormat: { type: "json_object" } });
   assert.equal(result.text, "整理完成");
   assert.equal(calls.at(-1).url, "http://127.0.0.1:11434/v1/chat/completions");
   assert.equal(calls.at(-1).options.headers.Authorization, undefined);
   assert.deepEqual(JSON.parse(calls.at(-1).options.body).response_format, { type: "json_object" });
+});
+
+test("Provider 診斷可區分 API 路徑、模型不存在與連線逾時", async () => {
+  const profile = { type: "openai-compatible", baseUrl: "https://gateway.example.com/v1", model: "missing-model", apiKey: "" };
+  const missing = await testProvider(async () => jsonResponse({ data: [] }), profile);
+  assert.equal(missing.ok, false);
+  assert.equal(missing.diagnostics.stage, "model");
+  assert.equal(missing.diagnostics.code, "provider-model-not-found");
+
+  const badPath = await testProvider(async () => jsonResponse({ error: { message: "not found" } }, 404), profile);
+  assert.equal(badPath.diagnostics.stage, "api-path");
+  assert.equal(badPath.diagnostics.status, 404);
+
+  const timeout = await testProvider(async () => { throw new Error("network down"); }, profile);
+  assert.equal(timeout.diagnostics.stage, "connection");
+  assert.equal(timeout.diagnostics.code, "network down");
 });
 
 test("遠端 Gateway 使用 Bearer Key 且錯誤不回傳金鑰", async () => {

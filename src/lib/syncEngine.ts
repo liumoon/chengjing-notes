@@ -2,6 +2,7 @@ import { db } from "../db";
 import { ignoreTransactionHistory } from "./historyTransactions";
 import { syncEnabled, remoteSyncTransactions, baselineSyncTransactions } from "./syncJournal";
 import { SYNC_TABLES, validateSyncPacket, mergeSyncRecord, materializedHead, type SyncPacket, type SyncRecord, type SyncOperation } from "./syncProtocol";
+import { wrapSyncError } from "./syncErrors";
 
 export interface SyncTransport {
   stage?: (packet: SyncPacket) => Promise<unknown>;
@@ -12,6 +13,10 @@ export interface SyncTransport {
   put: (id: string, data: string) => Promise<unknown>;
 }
 let active: Promise<void> | null = null;
+async function remoteCall<T>(stage: "list" | "get" | "put" | "stage" | "upload" | "download", call: () => Promise<T>) {
+  try { return await call(); }
+  catch (error) { throw wrapSyncError(stage, error); }
+}
 function withLocalAsset(value: Record<string, unknown>, asset?: Record<string, unknown>) {
   return asset ? { ...value, storage: asset.storage, relativePath: asset.relativePath } : value;
 }
@@ -30,7 +35,7 @@ export async function stagePendingSync(transport: SyncTransport) {
   if (!syncEnabled() || !transport.stage) return;
   for await (const packet of pendingSyncPackets()) {
     if (!syncEnabled()) break;
-    await transport.stage(packet);
+    await remoteCall("stage", () => transport.stage!(packet));
   }
 }
 export async function enableSync() {
@@ -69,7 +74,7 @@ export async function reconcileLatestRecords(transport?: SyncTransport) {
       const existing = await db.attachments.get(candidateWinner.key);
       if (existing?.sha256 !== candidateWinner.value.sha256 || existing?.storage !== "file") {
         if (!transport?.downloadAsset) throw new Error("sync-attachment-transport-required");
-        asset = await transport.downloadAsset(candidateWinner.value);
+        asset = await remoteCall("download", () => transport.downloadAsset!(candidateWinner.value!));
       } else asset = existing as unknown as Record<string, unknown>;
     }
     await db.transaction("rw", db.table(table), db.table("syncRecords"), async (transaction) => {
@@ -97,7 +102,7 @@ export async function applySyncPacket(input: unknown, transport?: SyncTransport)
     if (existing?.sha256 === op.value.sha256 && existing?.storage === "file") assets.set(op.id, existing as unknown as Record<string, unknown>);
     else {
       if (!transport?.downloadAsset) throw new Error("sync-attachment-transport-required");
-      assets.set(op.id, await transport.downloadAsset(op.value));
+      assets.set(op.id, await remoteCall("download", () => transport.downloadAsset!(op.value!)));
     }
   }
   await db.transaction("rw", [...names.map((name) => db.table(name)), db.table("syncRecords"), db.table("syncInbox"), db.table("syncOutbox")], async (transaction) => {
@@ -132,21 +137,21 @@ export function synchronize(transport: SyncTransport): Promise<void> {
   active = (async () => {
     if (!syncEnabled()) return;
     await reconcileLatestRecords(transport);
-    const listed = await transport.list();
+    const listed = await remoteCall("list", transport.list);
     for (const file of listed) {
       if (!syncEnabled()) return;
-      if (!await db.table("syncInbox").get(file.name)) await applySyncPacket(JSON.parse(await transport.get(file.id)), transport);
+      if (!await db.table("syncInbox").get(file.name)) await applySyncPacket(JSON.parse(await remoteCall("get", () => transport.get(file.id))), transport);
     }
     for await (const packet of pendingSyncPackets()) {
       if (!syncEnabled()) return;
-      await transport.stage?.(packet);
+      if (transport.stage) await remoteCall("stage", () => transport.stage!(packet));
       for (const operation of packet.operations) if (operation.table === "attachments" && operation.value) {
         if (!syncEnabled()) return;
         if (!transport.uploadAsset) throw new Error("sync-attachment-transport-required");
-        await transport.uploadAsset(operation.value);
+        await remoteCall("upload", () => transport.uploadAsset!(operation.value!));
       }
       if (!syncEnabled()) return;
-      await transport.put(packet.id, JSON.stringify(packet));
+      await remoteCall("put", () => transport.put(packet.id, JSON.stringify(packet)));
       await db.transaction("rw", db.table("syncOutbox"), db.table("syncInbox"), async () => {
         await db.table("syncOutbox").bulkDelete(packet.operations.map((op) => op.id));
         await db.table("syncInbox").put({ id: packet.id });

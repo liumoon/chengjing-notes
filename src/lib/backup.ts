@@ -155,11 +155,11 @@ export async function restoreBackup(raw: string, backupFilePath = "") {
   }
 }
 
-export async function restoreLocalBackup(raw: string, backupFilePath: string) {
+export async function restoreLocalBackup(raw: string, backupFilePath: string, confirmed = false) {
   const language = useAppStore.getState().language || "zh-TW";
   try { validateBackup(JSON.parse(raw)); }
   catch { throw new Error(translate(language, "backup.invalid")); }
-  if (!window.confirm(getHealthCopy(language).restoreConfirm)) return false;
+  if (!confirmed && !window.confirm(getHealthCopy(language).restoreConfirm)) return false;
   if (!window.chengjing?.backups?.writeSafety) throw new Error(translate(language, "settings.desktopRequired"));
   await window.chengjing.backups.writeSafety(await createIncrementalBackupPayload());
   await restoreBackup(raw, backupFilePath);

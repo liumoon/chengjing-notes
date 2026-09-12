@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, Check, ChevronDown, CloudCog, Eye, EyeOff, KeyRound, Plus, RefreshCw, Server, ShieldCheck, Trash2 } from "lucide-react";
 import { useI18n } from "../hooks/useI18n";
-import { getAdvancedProviderCopy, getProviderApiModeCopy } from "../lib/advancedProviderCopy";
+import { getAdvancedProviderCopy, getProviderApiModeCopy, getProviderDiagnosticCopy } from "../lib/advancedProviderCopy";
 import { useAppStore } from "../store";
-import type { AIProviderApiMode, AIProviderModel, AIProviderProfile, AIProviderSettings, AIProviderType } from "../types";
+import type { AIProviderApiMode, AIProviderDiagnostics, AIProviderModel, AIProviderProfile, AIProviderSettings, AIProviderType } from "../types";
 import { friendlyErrorMessage } from "../lib/utils";
 import { getHealthCopy } from "../lib/healthCopy";
 
@@ -13,6 +13,7 @@ export function AdvancedAIProviderSettings() {
   const { language } = useI18n();
   const copy = useMemo(() => getAdvancedProviderCopy(language), [language]);
   const modeCopy = useMemo(() => getProviderApiModeCopy(language), [language]);
+  const diagnosticCopy = useMemo(() => getProviderDiagnosticCopy(language), [language]);
   const healthCopy = getHealthCopy(language);
   const engine = useAppStore((state) => state.aiEngine);
   const setEngine = useAppStore((state) => state.setAIEngine);
@@ -29,6 +30,7 @@ export function AdvancedAIProviderSettings() {
   const [models, setModels] = useState<AIProviderModel[]>([]);
   const [busy, setBusy] = useState<"save" | "test" | "models" | "generate" | "">("");
   const [notice, setNotice] = useState("");
+  const [diagnostics, setDiagnostics] = useState<AIProviderDiagnostics | null>(null);
   const [expanded, setExpanded] = useState(false);
   const activeProfile = settings.profiles.find((profile) => profile.id === settings.selectedProfileId);
   const editingProfile = settings.profiles.find((profile) => profile.id === editingId);
@@ -40,11 +42,11 @@ export function AdvancedAIProviderSettings() {
   }
 
   function loadProfile(profile: AIProviderProfile) {
-    setEditingId(profile.id); setType(profile.type); setApiMode(profile.apiMode); setName(profile.name); setBaseUrl(profile.baseUrl); setModel(profile.model); setApiKey(""); setModels([]); setNotice("");
+    setEditingId(profile.id); setType(profile.type); setApiMode(profile.apiMode); setName(profile.name); setBaseUrl(profile.baseUrl); setModel(profile.model); setApiKey(""); setModels([]); setNotice(""); setDiagnostics(null);
   }
 
   function resetForm(nextType: AIProviderType = "ollama") {
-    setEditingId(""); setType(nextType); setApiMode("chat-completions"); setName(nextType === "ollama" ? "Ollama" : "Custom Gateway"); setBaseUrl(nextType === "ollama" ? "http://127.0.0.1:11434/v1" : "https://"); setModel(""); setApiKey(""); setModels([]); setNotice("");
+    setEditingId(""); setType(nextType); setApiMode("chat-completions"); setName(nextType === "ollama" ? "Ollama" : "Custom Gateway"); setBaseUrl(nextType === "ollama" ? "http://127.0.0.1:11434/v1" : "https://"); setModel(""); setApiKey(""); setModels([]); setNotice(""); setDiagnostics(null);
   }
 
   useEffect(() => {
@@ -87,7 +89,13 @@ export function AdvancedAIProviderSettings() {
   async function testConnection() {
     if (!window.chengjing || !editingId || unsaved || busy) return;
     setBusy("test"); setNotice("");
-    try { const result = await window.chengjing.ai.testProvider(editingId); setModels(result.models); setNotice(copy.connected(result.models.length)); }
+    try {
+      const result = await window.chengjing.ai.testProvider(editingId);
+      setModels(result.models);
+      setDiagnostics(result.diagnostics || null);
+      if (result.ok && result.diagnostics?.stage === "ok") setNotice(copy.connected(result.models.length));
+      else setNotice("");
+    }
     catch (error) { setNotice(friendlyErrorMessage(error, copy.desktop)); }
     finally { setBusy(""); }
   }
@@ -169,6 +177,7 @@ export function AdvancedAIProviderSettings() {
           <label className="provider-wide-field"><span>{copy.baseUrl}</span><input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} maxLength={1000} placeholder={type === "ollama" ? "http://127.0.0.1:11434/v1" : "https://gateway.example.com/v1"} required /></label>
           <label className="provider-wide-field"><span>{copy.apiKey}</span><div><KeyRound size={14} /><input type={showKey ? "text" : "password"} value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={editingProfile?.keyConfigured ? copy.keySaved : copy.keyOptional} /><button type="button" aria-label={showKey ? "Hide" : "Show"} onClick={() => setShowKey(!showKey)}>{showKey ? <EyeOff size={15} /> : <Eye size={15} />}</button></div></label>
           {notice && <p className="provider-notice" role="status">{notice}</p>}
+          {diagnostics && <p className={`provider-diagnostic is-${diagnostics.stage}`} role="status"><b>{diagnosticCopy.title}</b><span>{diagnostics.stage === "ok" ? diagnosticCopy.healthy(diagnostics.model || model) : diagnostics.stage === "url" ? diagnosticCopy.url : diagnostics.stage === "connection" ? diagnosticCopy.connection : diagnostics.stage === "api-path" ? diagnosticCopy.apiPath : diagnostics.stage === "http" ? diagnosticCopy.http(diagnostics.status || 0) : diagnosticCopy.model(diagnostics.model || model)}</span></p>}
           {editingId && <div className="provider-generation-check"><span>{unsaved ? healthCopy.saveFirst : healthCopy.generationHint}</span><button type="button" className="secondary-button" disabled={Boolean(busy) || unsaved} onClick={() => void testGeneration()}><Activity size={14} className={busy === "generate" ? "spin" : ""} />{busy === "generate" ? healthCopy.generating : healthCopy.generation}</button></div>}
           <footer>
             <span>{editingProfile?.keyConfigured && <button type="button" className="provider-clear-key" onClick={() => void removeKey()}>{copy.clearKey}</button>}</span>

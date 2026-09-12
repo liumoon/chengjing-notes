@@ -31,6 +31,8 @@ import {
 import { getAutoBackupCopy } from "../lib/autoBackupCopy";
 import { formatBytes, friendlyErrorMessage } from "../lib/utils";
 import { estimateNoteStorageBytes, restoreBackup, restoreLocalBackup, saveJsonBackup, saveMarkdownArchive } from "../lib/backup";
+import { backupInspectionMessage, getBackupInspectionCopy } from "../lib/backupInspectionCopy";
+import { inspectBackup, type BackupInspection } from "../lib/backupValidation";
 import { inspectLocalModel } from "../lib/localGemma";
 import { db } from "../db";
 import { useI18n } from "../hooks/useI18n";
@@ -48,6 +50,7 @@ export function AutoBackupSettingsPanel() {
   const [cloudStatus, setCloudStatus] = useState<CloudBackupStatus | null>(null);
   const [busy, setBusy] = useState<BusyAction>("");
   const [notice, setNotice] = useState("");
+  const [preflight, setPreflight] = useState<BackupInspection | null>(null);
   const [storage, setStorage] = useState({ notes: 0, attachments: 0, model: 0 });
 
   useEffect(() => {
@@ -239,13 +242,24 @@ export function AutoBackupSettingsPanel() {
     const bridge = window.chengjing?.cloudBackups;
     if (!bridge) return;
     const confirmation = slot === "previous" ? text.restoreYesterdayConfirm : text.restoreLatestConfirm;
-    if (!window.confirm(confirmation)) return;
     setBusy(slot === "previous" ? "restore-previous" : "restore-current");
     setNotice(slot === "previous" ? text.emergencyWarning : text.safetyCopy);
     try {
       const safetyPayload = await prepareCompleteBackup();
       await writeRestoreSafetyBackup(safetyPayload);
       const downloaded = await bridge.download(slot);
+      const inspection = inspectBackup(JSON.parse(downloaded.data));
+      setPreflight(inspection);
+      const inspectionCopy = getBackupInspectionCopy(language);
+      const summary = [
+        `${inspectionCopy.title}：${inspectionCopy.version(inspection.version)}`,
+        [inspectionCopy.cards(inspection.cardCount), inspectionCopy.attachments(inspection.attachmentCount), inspectionCopy.tasks(inspection.taskCount), inspectionCopy.boards(inspection.boardCount)].join(" · "),
+        backupInspectionMessage(inspection, language),
+      ].join("\n");
+      if (!window.confirm(`${confirmation}\n\n${summary}\n\n${inspectionCopy.confirm}`)) {
+        await bridge.cancelRestore().catch(() => {});
+        return;
+      }
       try {
         await restoreBackup(downloaded.data, downloaded.backupFilePath);
         const settings = await bridge.completeRestore({
@@ -277,7 +291,16 @@ export function AutoBackupSettingsPanel() {
     if (result.canceled || !result.files[0]) return;
     try {
       const raw = new TextDecoder().decode(Uint8Array.from(atob(result.files[0].data), (character) => character.charCodeAt(0)));
-      if (!await restoreLocalBackup(raw, result.files[0].path)) return;
+      const inspection = inspectBackup(JSON.parse(raw));
+      setPreflight(inspection);
+      const inspectionCopy = getBackupInspectionCopy(language);
+      const summary = [
+        `${inspectionCopy.title}：${inspectionCopy.version(inspection.version)}`,
+        [inspectionCopy.cards(inspection.cardCount), inspectionCopy.attachments(inspection.attachmentCount), inspectionCopy.tasks(inspection.taskCount), inspectionCopy.boards(inspection.boardCount)].join(" · "),
+        backupInspectionMessage(inspection, language),
+      ].join("\n");
+      if (!window.confirm(`${summary}\n\n${inspectionCopy.confirm}`)) return;
+      if (!await restoreLocalBackup(raw, result.files[0].path, true)) return;
       setNotice(t("settings.backupRestored"));
     } catch (error) {
       setNotice(error instanceof Error ? error.message : t("settings.backupFailed"));
@@ -422,6 +445,11 @@ export function AutoBackupSettingsPanel() {
       </div>
 
       {notice && <div className="backup-notice" role="status">{notice}</div>}
+      {preflight && <div className={`backup-preflight ${preflight.missingAttachmentIds.length ? "is-warning" : "is-ready"}`} role="status">
+        <b>{getBackupInspectionCopy(language).title}</b>
+        <span>{[getBackupInspectionCopy(language).version(preflight.version), getBackupInspectionCopy(language).cards(preflight.cardCount), getBackupInspectionCopy(language).attachments(preflight.attachmentCount), getBackupInspectionCopy(language).tasks(preflight.taskCount), getBackupInspectionCopy(language).boards(preflight.boardCount)].join(" · ")}</span>
+        <small>{backupInspectionMessage(preflight, language)}</small>
+      </div>}
     </div>
   );
 }
