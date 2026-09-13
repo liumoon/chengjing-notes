@@ -55,6 +55,13 @@ describe("富文字畫面解析與存庫還原", () => {
     const result = canonicalizeImageSrcs(html, [attachment({ relativePath: "files/photo.png" })]);
     expect(result).toContain('src="attachment://att-1"');
   });
+
+  it("優先使用編輯器保留的附件識別並移除畫面專用標記", () => {
+    const html = '<img src="chengjing-attachment://local/stale.png" data-attachment-id="att-1">';
+    const result = canonicalizeImageSrcs(html, [attachment({ relativePath: "files/photo.png" })]);
+    expect(result).toContain('src="attachment://att-1"');
+    expect(result).not.toContain("data-attachment-id");
+  });
 });
 
 describe("匯出改寫為 assets/ 相對路徑", () => {

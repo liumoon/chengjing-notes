@@ -76,15 +76,24 @@ export function canonicalizeImageSrcs(html: string, attachments: AttachmentRecor
   const document = new DOMParser().parseFromString(html || "", "text/html");
   document.body.querySelectorAll("img[src]").forEach((image) => {
     const src = image.getAttribute("src") || "";
-    if (isAttachmentRef(src)) return;
+    const setRef = (id: string) => {
+      image.setAttribute("src", attachmentRef(id));
+      // This marker is only needed by the rendered editor document. Keep the
+      // persisted HTML portable and let resolveInlineImageSrcs add it again.
+      image.removeAttribute("data-attachment-id");
+    };
+    if (isAttachmentRef(src)) {
+      image.removeAttribute("data-attachment-id");
+      return;
+    }
     const declared = image.getAttribute("data-attachment-id") || "";
-    if (declared && byPath.size >= 0) {
-      image.setAttribute("src", attachmentRef(declared));
+    if (declared) {
+      setRef(declared);
       return;
     }
     for (const [relativePath, id] of byPath) {
       if (src.includes(encodeURIComponent(relativePath)) || src.endsWith(relativePath)) {
-        image.setAttribute("src", attachmentRef(id));
+        setRef(id);
         return;
       }
     }

@@ -41,6 +41,22 @@ export const SyncedTaskItem = TaskItem.extend({
   },
 });
 
+/** Preserve the attachment identity while the editor renders a local URL. */
+export const AttachmentImage = Image.extend({
+  addAttributes() {
+    return {
+      ...(this.parent?.() || {}),
+      attachmentId: {
+        default: null,
+        parseHTML: (element: Element) => element.getAttribute("data-attachment-id"),
+        renderHTML: (attributes: Record<string, unknown>) => (
+          attributes.attachmentId ? { "data-attachment-id": attributes.attachmentId } : {}
+        ),
+      },
+    };
+  },
+});
+
 /** 卡片編輯器、匯入器與匯出器共用的擴充集合，確保三方 schema 一致。 */
 export function cardExtensions(): AnyExtension[] {
   return [
@@ -54,7 +70,7 @@ export function cardExtensions(): AnyExtension[] {
     TableCell,
     // Data URLs are accepted only as a temporary parser hand-off. Import and
     // editor pipelines sanitize them before contentHtml is persisted.
-    Image.configure({ inline: false, allowBase64: true }),
+    AttachmentImage.configure({ inline: false, allowBase64: true }),
   ];
 }
 

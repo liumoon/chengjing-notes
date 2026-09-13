@@ -20,7 +20,8 @@ import { useI18n } from "../hooks/useI18n";
 import { editorTaskRecordId, normalizeEditorTaskHtml, syncCardTasksFromHtml } from "../lib/taskSync";
 import { showContextMenu } from "../lib/contextMenu";
 import { cardExtensions } from "../lib/markdownBridge";
-import { attachmentRef, canonicalizeImageSrcs, releaseResolvedUrls, resolveInlineImageSrcs } from "../lib/attachmentRefs";
+import { canonicalizeImageSrcs, releaseResolvedUrls, resolveInlineImageSrcs } from "../lib/attachmentRefs";
+import { attachmentUrl, shouldRevokeAttachmentUrl } from "../lib/attachments";
 import { extractClipboardImages } from "../lib/clipboardImages";
 import { getImportCopy } from "../lib/importCopy";
 import type { AttachmentRecord } from "../types";
@@ -44,6 +45,13 @@ interface RichEditorProps {
   attachments?: AttachmentRecord[];
   onPasteImages?: (inputs: ClipboardImageInput[]) => Promise<AttachmentRecord[]> | AttachmentRecord[];
   onPasteImagesRollback?: (attachments: AttachmentRecord[]) => Promise<void> | void;
+}
+
+function setContentWithoutHistory(editor: Editor, html: string) {
+  editor.chain().setContent(html, { emitUpdate: false }).command(({ tr }) => {
+    tr.setMeta("addToHistory", false);
+    return true;
+  }).run();
 }
 
 export function RichEditor({ content, onChange, placeholder, autoFocus = false, compact = false, onHighlight, taskOwnerId, attachments = [], onPasteImages, onPasteImagesRollback }: RichEditorProps) {
@@ -112,6 +120,7 @@ export function RichEditor({ content, onChange, placeholder, autoFocus = false, 
             ...saved.filter((attachment) => !previousAttachments.some((current) => current.id === attachment.id)),
           ];
           attachmentsRef.current = mergedAttachments;
+          const createdUrls: string[] = [];
           try {
             // Restore the selection only when the document stayed untouched while
             // the asynchronous native attachment write was in progress.
@@ -121,32 +130,21 @@ export function RichEditor({ content, onChange, placeholder, autoFocus = false, 
                 to: originalSelection.to,
               });
             }
-            const inserted = currentEditor.chain().focus().insertContent(saved.map((attachment) => ({
-              type: "image",
-              attrs: { src: attachmentRef(attachment.id), alt: attachment.name },
-            }))).run();
+            const renderedImages = saved.map((attachment) => {
+              const src = attachmentUrl(attachment);
+              if (!src) throw new Error("clipboard-image-url-failed");
+              if (shouldRevokeAttachmentUrl(attachment)) createdUrls.push(src);
+              return {
+                type: "image",
+                attrs: { src, alt: attachment.name, attachmentId: attachment.id },
+              };
+            });
+            const inserted = currentEditor.chain().focus().insertContent(renderedImages).run();
             if (!inserted) throw new Error("clipboard-image-insert-failed");
-
-            // The document stores attachment:// references, while the editor needs
-            // a local URL to render the image immediately after the async save.
-            const selection = currentEditor.state.selection;
-            const resolved = resolveInlineImageSrcs(currentEditor.getHTML(), mergedAttachments);
-            if (resolved.resolved.length) {
-              releaseResolvedUrls(objectUrls.current);
-              objectUrls.current = resolved.resolved;
-              currentEditor.commands.setContent(resolved.html, { emitUpdate: false });
-              const maxPosition = currentEditor.state.doc.content.size;
-              try {
-                currentEditor.commands.setTextSelection({
-                  from: Math.min(selection.from, maxPosition),
-                  to: Math.min(selection.to, maxPosition),
-                });
-              } catch {
-                // Image attributes do not normally change document positions.
-              }
-            }
+            objectUrls.current.push(...createdUrls);
             if (mounted.current) setPasteState("idle");
           } catch (error) {
+            releaseResolvedUrls(createdUrls);
             attachmentsRef.current = previousAttachments;
             return Promise.resolve(rollbackImages?.(saved))
               .catch(() => {})
@@ -171,9 +169,9 @@ export function RichEditor({ content, onChange, placeholder, autoFocus = false, 
       const revision = ++saveRevision.current;
       pendingSave.current = () => {
         pendingSave.current = null;
-        if (!activeEditor.isDestroyed && activeEditor.getHTML() === displayHtml && normalized.html !== displayHtml) {
+        if (!activeEditor.isDestroyed && activeEditor.getHTML() === displayHtml && normalized.html !== storedHtml) {
           const selection = activeEditor.state.selection;
-          activeEditor.commands.setContent(resolveInlineImageSrcs(normalized.html, attachmentsRef.current).html, { emitUpdate: false });
+          setContentWithoutHistory(activeEditor, resolveInlineImageSrcs(normalized.html, attachmentsRef.current).html);
           activeEditor.commands.setTextSelection({ from: selection.from, to: selection.to });
         }
         void Promise.resolve().then(() => save(normalized.html, plainText)).then(async () => {
@@ -195,7 +193,7 @@ export function RichEditor({ content, onChange, placeholder, autoFocus = false, 
     const resolved = resolveInlineImageSrcs(content || "<p></p>", attachments);
     releaseResolvedUrls(objectUrls.current);
     objectUrls.current = resolved.resolved;
-    editor.commands.setContent(resolved.html, { emitUpdate: false });
+    setContentWithoutHistory(editor, resolved.html);
   }, [content, editor, attachments]);
 
   useEffect(() => {
@@ -211,7 +209,7 @@ export function RichEditor({ content, onChange, placeholder, autoFocus = false, 
     const storedHtml = canonicalizeImageSrcs(editor.getHTML(), attachments);
     const normalized = normalizeEditorTaskHtml(storedHtml);
     if (normalized.html !== storedHtml) {
-      editor.commands.setContent(resolveInlineImageSrcs(normalized.html, attachments).html, { emitUpdate: false });
+      setContentWithoutHistory(editor, resolveInlineImageSrcs(normalized.html, attachments).html);
       onChangeRef.current(normalized.html, editor.getText({ blockSeparator: "\n" }));
     }
     void syncCardTasksFromHtml(taskOwnerId, normalized.html);

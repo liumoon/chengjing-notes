@@ -64,6 +64,7 @@
     "qa:installed-data-migration": "node scripts/qa-installed-data-migration.mjs",
     "qa:installed-performance": "node scripts/qa-installed-performance.mjs",
     "qa:macos-package": "node scripts/qa-macos-package.mjs",
+    "qa:macos-clipboard-images": "node scripts/qa-macos-clipboard-images.mjs",
     "qa:local-gemma-runtime": "node scripts/qa-local-gemma-runtime.mjs",
     "qa:live-local-gemma": "node scripts/qa-live-local-gemma.mjs",
     "qa:live-local-brain": "node scripts/qa-live-local-brain.mjs",
