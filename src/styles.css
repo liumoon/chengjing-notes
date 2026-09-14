@@ -1013,11 +1013,32 @@ html[data-quick-capture="true"], html[data-quick-capture="true"] body, html[data
 .attachment-health-summary { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0; }
 .attachment-health-summary span { padding: 5px 8px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-muted); font-size: calc(11px * var(--font-scale)); }
 .attachment-health-summary .is-warning { border-color: color-mix(in oklch, var(--warning) 45%, var(--border)); color: var(--warning); }
-.attachment-health-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.attachment-health-list li { display: flex; align-items: flex-start; gap: 7px; padding: 8px 9px; border-radius: 7px; background: var(--surface-2); color: var(--warning); }
-.attachment-health-list li > span { display: grid; min-width: 0; gap: 2px; }
-.attachment-health-list b { overflow: hidden; color: var(--text-1); font-size: calc(12px * var(--font-scale)); text-overflow: ellipsis; white-space: nowrap; }
-.attachment-health-list small { color: var(--text-muted); font-size: calc(11px * var(--font-scale)); line-height: 1.4; }
+.attachment-health-toolbar { display: grid; gap: 8px; }
+.attachment-health-search { display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); color: var(--text-muted); }
+.attachment-health-search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: var(--text-1); font: inherit; font-size: calc(12px * var(--font-scale)); }
+.attachment-health-filters { display: flex; flex-wrap: wrap; gap: 5px; }
+.attachment-health-filters button { min-height: 28px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--text-muted); cursor: pointer; font: inherit; font-size: calc(10.5px * var(--font-scale)); }
+.attachment-health-filters button.is-active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+.attachment-health-result-count { margin: 8px 0 !important; color: var(--text-muted); font-size: calc(10.5px * var(--font-scale)) !important; }
+.attachment-health-list { display: grid; gap: 6px; max-height: 420px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.attachment-health-list li { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 8px 9px; border-radius: 7px; background: var(--surface-2); }
+.attachment-health-list li.has-issues { box-shadow: inset 3px 0 var(--warning); }
+.attachment-health-thumbnail { display: grid; width: 34px; height: 34px; place-items: center; overflow: hidden; border-radius: 6px; background: var(--surface-3); color: var(--accent-strong); }
+.attachment-health-thumbnail.is-placeholder { border: 1px solid var(--border); }
+.attachment-health-thumbnail img, img.attachment-health-thumbnail { object-fit: cover; }
+.attachment-health-entry-main { display: grid; min-width: 0; gap: 2px; }
+.attachment-health-entry-title { display: flex; align-items: center; min-width: 0; gap: 7px; }
+.attachment-health-entry-title b { min-width: 0; overflow: hidden; color: var(--text-1); font-size: calc(12px * var(--font-scale)); text-overflow: ellipsis; white-space: nowrap; }
+.attachment-health-entry-title span { flex: none; padding: 2px 5px; border-radius: 4px; background: var(--surface-3); color: var(--text-muted); font-size: calc(9px * var(--font-scale)); }
+.attachment-health-list small { color: var(--text-muted); font-size: calc(10.5px * var(--font-scale)); line-height: 1.4; }
+.attachment-health-entry-issues { display: flex; align-items: center; gap: 4px; color: var(--warning) !important; }
+.attachment-health-entry-actions { display: flex; align-items: center; gap: 2px; }
+.attachment-health-entry-actions button { display: grid; width: 28px; height: 28px; place-items: center; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.attachment-health-entry-actions button:hover, .attachment-health-entry-actions button:focus-visible { background: var(--surface-3); color: var(--accent-strong); }
+.attachment-health-entry-actions button:disabled { cursor: not-allowed; opacity: .45; }
+.attachment-health-details { grid-column: 2 / -1; display: grid; gap: 4px; padding: 8px 0 2px; border-top: 1px solid var(--border); }
+.attachment-health-details > div { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 8px; min-width: 0; color: var(--text-muted); font-size: calc(10.5px * var(--font-scale)); }
+.attachment-health-details code { min-width: 0; overflow: hidden; color: var(--text-2); text-overflow: ellipsis; white-space: nowrap; }
 .attachment-health-empty, .attachment-health-notice { display: flex; align-items: center; gap: 6px; }
 .attachment-health-empty { color: var(--accent-strong) !important; }
 .attachment-health-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 13px; }

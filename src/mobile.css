@@ -207,6 +207,12 @@ html[data-platform="android"] .window-drag-region { display: none; }
   html[data-platform="android"] .sync-state { padding:14px 12px; gap:10px; }
   html[data-platform="android"] .backup-import-tools > div { padding-left:0; }
   html[data-platform="android"] .engine-choice-grid, html[data-platform="android"] .backup-method-grid { grid-template-columns:minmax(0,1fr); }
+  html[data-platform="android"] .attachment-health-list { max-height: none; overflow: visible; }
+  html[data-platform="android"] .attachment-health-filters { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+  html[data-platform="android"] .attachment-health-filters button { flex: none; min-height: 36px; }
+  html[data-platform="android"] .attachment-health-entry-actions button { width: 40px; height: 40px; }
+  html[data-platform="android"] .attachment-health-details { grid-column: 1 / -1; }
+  html[data-platform="android"] .attachment-health-details > div { grid-template-columns:78px minmax(0,1fr); }
   html[data-platform="android"] .settings-page { overflow-x:hidden; }
   html[data-platform="android"] .settings-page input, html[data-platform="android"] .settings-page select { max-width:100%; min-width:0; }
   html[data-platform="android"] .settings-jump-nav { max-width:100%; }
