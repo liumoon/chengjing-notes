@@ -4,7 +4,7 @@ import dayjs from "dayjs";
 import { CalendarDays, ChevronLeft, ChevronRight, Circle, Highlighter, Sparkles } from "lucide-react";
 import { db, getOrCreateJournal, updateCardWithHistory } from "../db";
 import { useAppStore } from "../store";
-import { RichEditor } from "../components/RichEditor";
+import { CardContentEditor } from "../components/CardContentEditor";
 import { TagPicker } from "../components/TagPicker";
 import { TaskDatePicker } from "../components/TaskDatePicker";
 import { showContextMenuFromPointer } from "../lib/contextMenu";
@@ -89,8 +89,8 @@ export function JournalView() {
           </header>
           <div className="journal-tags"><TagPicker selectedIds={journal.tagIds} onChange={(tagIds) => db.cards.update(journal.id, { tagIds, updatedAt: Date.now() })} /></div>
           {highlightNotice && <div className="journal-highlight-notice" role="status"><Highlighter size={14} /><span>{highlightNotice}</span></div>}
-          <RichEditor
-            content={journal.contentHtml}
+          <CardContentEditor
+            contentHtml={journal.contentHtml}
             onChange={(contentHtml, plainText) => updateCardWithHistory(journal.id, { contentHtml, plainText })}
             onHighlight={createJournalHighlight}
             taskOwnerId={journal.id}

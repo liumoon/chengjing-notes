@@ -5,6 +5,7 @@ import { MarkdownSourceEditor } from "./MarkdownSourceEditor";
 import { fromMarkdown, plainTextFromHtml, toMarkdown } from "../lib/contentPipeline";
 import { readEditorMode, requestEditorFlush, writeEditorMode, type CardEditorMode } from "../lib/editorMode";
 import { getImportCopy } from "../lib/importCopy";
+import { syncCardTasksFromHtml } from "../lib/taskSync";
 import type { AttachmentRecord } from "../types";
 import type { ClipboardImageInput } from "../lib/clipboardImages";
 import { useI18n } from "../hooks/useI18n";
@@ -44,6 +45,15 @@ export function CardContentEditor({ contentHtml, onChange, onHighlight, taskOwne
     htmlRef.current = contentHtml;
   }, [contentHtml]);
 
+  async function persistMarkdownHtml(nextHtml: string, nextPlainText: string) {
+    htmlRef.current = nextHtml;
+    await onChangeRef.current(nextHtml, nextPlainText);
+    // RichEditor already performs this synchronization in its debounced save
+    // path. Markdown edits bypass that component, so keep journal/card tasks
+    // aligned here as well.
+    if (taskOwnerId) await syncCardTasksFromHtml(taskOwnerId, nextHtml);
+  }
+
   useEffect(() => {
     if (mode !== "markdown") return;
     let cancelled = false;
@@ -69,8 +79,7 @@ export function CardContentEditor({ contentHtml, onChange, onHighlight, taskOwne
         setMarkdown(result.markdown);
       } else {
         const chunk = await fromMarkdown(markdown, { previousHtml: htmlRef.current, allowRemoteImages: false });
-        htmlRef.current = chunk.contentHtml;
-        await onChangeRef.current(chunk.contentHtml, chunk.plainText || plainTextFromHtml(chunk.contentHtml));
+        await persistMarkdownHtml(chunk.contentHtml, chunk.plainText || plainTextFromHtml(chunk.contentHtml));
       }
       setMode(next);
       writeEditorMode(next);
@@ -84,9 +93,11 @@ export function CardContentEditor({ contentHtml, onChange, onHighlight, taskOwne
     setMarkdown(value);
     converting.current = true;
     const chunk = await fromMarkdown(value, { previousHtml: htmlRef.current, allowRemoteImages: false });
-    htmlRef.current = chunk.contentHtml;
-    await onChangeRef.current(chunk.contentHtml, chunk.plainText || plainTextFromHtml(chunk.contentHtml));
-    converting.current = false;
+    try {
+      await persistMarkdownHtml(chunk.contentHtml, chunk.plainText || plainTextFromHtml(chunk.contentHtml));
+    } finally {
+      converting.current = false;
+    }
   }
 
   return (

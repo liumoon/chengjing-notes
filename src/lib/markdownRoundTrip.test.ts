@@ -114,6 +114,16 @@ describe("富文字 ⇄ Markdown 反覆切換不改變語意", () => {
     }
     expect(plainTextFromHtml(html)).toBe(baseline);
   });
+
+  it("Markdown 編輯日誌時沿用既有核取清單 ID", async () => {
+    const previousHtml = '<ul data-type="taskList"><li data-type="taskItem" data-task-id="journal-task-1" data-checked="true"><div><p>回覆郵件</p></div></li></ul>';
+    const next = await fromMarkdown("- [x] 回覆郵件\n", { previousHtml });
+    const document = new DOMParser().parseFromString(next.contentHtml, "text/html");
+    const task = document.querySelector('li[data-type="taskItem"]');
+
+    expect(task?.getAttribute("data-task-id")).toBe("journal-task-1");
+    expect(task?.getAttribute("data-checked")).toBe("true");
+  });
 });
 
 describe("appendContent 附加與核取清單 ID", () => {
