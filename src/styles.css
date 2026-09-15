@@ -24,6 +24,8 @@
   --brand-leading: max(17px, calc(var(--window-controls-safe-x) + 12px));
   --windowed-collapsed-sidebar-width: max(104px, calc(var(--window-controls-safe-x) + 55px));
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --media-checker-base: #f7f6f1;
+  --media-checker-tile: rgb(116 130 122 / 0.2);
 }
 
 :root[data-platform="win32"] {
@@ -54,6 +56,8 @@
   --kanban-column: #e5e1d7;
   --kanban-column-active: #d9e4dd;
   --kanban-card-hover: #f4f1ea;
+  --media-checker-base: #f7f6f1;
+  --media-checker-tile: rgb(116 130 122 / 0.2);
 }
 
 :root[data-theme="dark"] {
@@ -88,6 +92,8 @@
   --kanban-column: #17211d;
   --kanban-column-active: #1b2c26;
   --kanban-card-hover: #22302a;
+  --media-checker-base: #242d29;
+  --media-checker-tile: rgb(255 255 255 / 0.1);
 }
 
 :root[data-theme="ink"] {
@@ -122,6 +128,8 @@
   --kanban-column: #191a16;
   --kanban-column-active: #242b23;
   --kanban-card-hover: #292a24;
+  --media-checker-base: #292a24;
+  --media-checker-tile: rgb(255 255 255 / 0.1);
 }
 
 * { box-sizing: border-box; }
@@ -831,7 +839,7 @@ html[data-quick-capture="true"], html[data-quick-capture="true"] body, html[data
 .source-link span { flex: 1; }
 .source-link code { font-size: calc(12px * var(--font-scale)); }
 .attachment-image, .attachment-video { display: block; width: 100%; margin: 12px 0; border: 1px solid var(--border); border-radius: 8px; }
-.attachment-image { max-height: 320px; object-fit: contain; background: var(--canvas); }
+.attachment-image { max-height: 320px; object-fit: contain; }
 .attachment-video { max-height: 290px; background: black; }
 .attachment-media { width: 100%; margin: 12px 0; }
 .attachment-download { display: flex; align-items: center; gap: 6px; margin: 10px 0; font-size: calc(13px * var(--font-scale)); }
@@ -1778,6 +1786,7 @@ html[data-quick-capture="true"], html[data-quick-capture="true"] body, html[data
 .prose-editor td p, .prose-editor th p { margin: 0; }
 .prose-editor img { max-width: 100%; height: auto; border-radius: 8px; }
 .prose-editor img[data-missing-attachment] { min-height: 40px; border: 1px dashed var(--border-strong); background: var(--surface-2); }
+.flow-card-media.is-image, .attachment-image, .prose-editor img:not([data-missing-attachment]) { background-color: var(--media-checker-base); background-image: linear-gradient(45deg, var(--media-checker-tile) 25%, transparent 25%, transparent 75%, var(--media-checker-tile) 75%), linear-gradient(45deg, var(--media-checker-tile) 25%, transparent 25%, transparent 75%, var(--media-checker-tile) 75%); background-position: 0 0, 8px 8px; background-size: 16px 16px; }
 
 /* ---- 共用匯入 Workbench（拖放、逐檔進度、警告與部分成功） ------------------- */
 .import-workbench { display: grid; gap: 14px; }
