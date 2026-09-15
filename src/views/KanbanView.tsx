@@ -40,8 +40,8 @@ import {
 } from "../lib/kanban";
 import { getKanbanCopy } from "../lib/kanbanCopy";
 import { localDateKey, timestampForLocalDateKey } from "../lib/taskTimeline";
-import { dataUrlToBlob, truncate } from "../lib/utils";
-import { storeAttachment } from "../lib/importers";
+import { truncate } from "../lib/utils";
+import { addSelectedAttachmentsToCard } from "../lib/cardAttachments";
 import { removeStoredAttachment } from "../lib/attachments";
 import { showContextMenuFromPointer } from "../lib/contextMenu";
 import { isMaterializedCard } from "../lib/journalVisibility";
@@ -234,18 +234,14 @@ export function KanbanView() {
   }
 
   async function addAttachment() {
-    if (!selectedCard || !window.chengjing) return;
+    if (!selectedCard) return;
     try {
+      if (!window.chengjing?.files) return;
       const result = await window.chengjing.files.open({ title: copy.addAttachment, multiple: true, metadataOnly: true, filters: [{ name: copy.attachments, extensions: ["*"] }] });
       if (result.canceled || !result.files.length) return;
-      const ids: string[] = [];
-      for (const file of result.files) {
-        const source = window.chengjing?.attachments ? new Blob([], { type: "application/octet-stream" }) : dataUrlToBlob(`data:application/octet-stream;base64,${file.data}`);
-        const attachment = await storeAttachment(file.name, source, file.path);
-        ids.push(attachment.id);
-      }
-      await updateCard({ attachmentIds: [...selectedCard.attachmentIds, ...ids] });
-      showNotice(copy.attachmentAdded);
+      const saved = await addSelectedAttachmentsToCard(selectedCard.id, result.files);
+      if (saved.attachments.length && !saved.failures.length) showNotice(copy.attachmentAdded);
+      else if (saved.failures.length) showNotice(copy.attachmentFailed, "error", 3200);
     } catch {
       showNotice(copy.attachmentFailed, "error", 3200);
     }

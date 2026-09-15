@@ -14,6 +14,7 @@ import {
   MapPin,
   MoreHorizontal,
   PanelsTopLeft,
+  Paperclip,
   Pin,
   History,
   Plus,
@@ -39,6 +40,8 @@ import { persistInlineClipboardImages, rollbackInlineClipboardImages } from "../
 import type { ClipboardImageInput } from "../lib/clipboardImages";
 import { searchQueryTerms } from "../lib/searchIndex";
 import { isMaterializedCard } from "../lib/journalVisibility";
+import { addSelectedAttachmentsToCard, type SelectedAttachmentInput } from "../lib/cardAttachments";
+import { getKanbanCopy } from "../lib/kanbanCopy";
 
 const PdfAttachmentViewer = lazy(() => import("./PdfAttachmentViewer").then((module) => ({ default: module.PdfAttachmentViewer })));
 
@@ -95,13 +98,16 @@ export function CardEditorPanel() {
   const [addingProperty, setAddingProperty] = useState(false);
   const [propertyName, setPropertyName] = useState("");
   const [propertyValue, setPropertyValue] = useState("");
+  const [addingAttachments, setAddingAttachments] = useState(false);
   const selectedTextRef = useRef("");
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingTitle = useRef<(() => void) | null>(null);
   const titleComposing = useRef(false);
   const propertyCopy = getCardPropertyCopy(language);
   const importCopy = getImportCopy(language);
+  const attachmentCopy = getKanbanCopy(language);
 
   async function exportMarkdown() {
     try {
@@ -152,6 +158,48 @@ export function CardEditorPanel() {
     await update({ attachmentIds: activeCard.attachmentIds.filter((id) => id !== attachment.id) });
     const usedElsewhere = await db.cards.filter((item) => item.id !== activeCard.id && item.attachmentIds.includes(attachment.id)).count();
     if (!usedElsewhere) await removeStoredAttachment(attachment);
+  }
+
+  async function addAttachments(inputs: SelectedAttachmentInput[]) {
+    if (!inputs.length || addingAttachments) return;
+    setAddingAttachments(true);
+    try {
+      const result = await addSelectedAttachmentsToCard(activeCard.id, inputs);
+      if (result.attachments.length && !result.failures.length) {
+        showHighlightNotice(attachmentCopy.attachmentAdded);
+      } else if (result.failures.length) {
+        showHighlightNotice(attachmentCopy.attachmentFailed);
+      }
+    } catch {
+      showHighlightNotice(attachmentCopy.attachmentFailed);
+    } finally {
+      setAddingAttachments(false);
+    }
+  }
+
+  async function chooseAttachments() {
+    if (addingAttachments) return;
+    if (!window.chengjing?.files) {
+      attachmentInputRef.current?.click();
+      return;
+    }
+    try {
+      const result = await window.chengjing.files.open({
+        title: attachmentCopy.addAttachment,
+        multiple: true,
+        metadataOnly: true,
+        filters: [{ name: attachmentCopy.attachments, extensions: ["*"] }],
+      });
+      if (!result.canceled) await addAttachments(result.files);
+    } catch {
+      showHighlightNotice(attachmentCopy.attachmentFailed);
+    }
+  }
+
+  function onAttachmentInputChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = [...(event.currentTarget.files || [])].map((file) => ({ name: file.name, blob: file }));
+    event.currentTarget.value = "";
+    void addAttachments(files);
   }
 
   function saveTitle(value: string, immediate = false) {
@@ -225,6 +273,13 @@ export function CardEditorPanel() {
           <div className="card-meta-line">
             <TagPicker selectedIds={card.tagIds} onChange={(tagIds) => update({ tagIds })} />
             <span>{relativeTime(card.updatedAt, language)}</span>
+          </div>
+          <div className="card-attachments-toolbar">
+            <span><Paperclip size={14} />{attachmentCopy.attachments}{headerAttachments.length ? ` · ${headerAttachments.length}` : ""}</span>
+            <button type="button" className="secondary-button" disabled={addingAttachments} onClick={() => void chooseAttachments()}>
+              <Plus size={14} />{attachmentCopy.addAttachment}
+            </button>
+            <input ref={attachmentInputRef} className="sr-only" type="file" multiple onChange={onAttachmentInputChange} />
           </div>
           {headerAttachments.map((attachment) => <AttachmentPreview key={attachment.id} attachment={attachment} downloadLabel={t("card.download", { name: attachment.name })} onRemove={() => detachAttachment(attachment)} />)}
           {card.sourceUrl && <a className="source-link" href={card.sourceUrl} target="_blank" rel="noreferrer"><ArrowUpRight size={14} /><span>{t("card.source")}</span><code>{new URL(card.sourceUrl).hostname}</code></a>}

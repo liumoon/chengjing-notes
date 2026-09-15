@@ -823,6 +823,9 @@ html[data-quick-capture="true"], html[data-quick-capture="true"] body, html[data
 .card-title-input { width: 100%; margin: 0 0 9px; border: 0; outline: 0; background: transparent; color: var(--text-1); font-size: calc(25px * var(--font-scale)); font-weight: 680; letter-spacing: -0.012em; line-height: 1.38; }
 .card-meta-line { display: flex; min-height: 28px; align-items: center; justify-content: space-between; gap: 9px; margin-bottom: 12px; }
 .card-meta-line > span { color: var(--text-muted); font-size: calc(12px * var(--font-scale)); white-space: nowrap; }
+.card-attachments-toolbar { display: flex; min-height: 32px; align-items: center; justify-content: space-between; gap: 10px; margin: 4px 0 3px; }
+.card-attachments-toolbar > span { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: calc(12px * var(--font-scale)); font-weight: 650; }
+.card-attachments-toolbar .secondary-button { min-height: 30px; padding: 0 8px; }
 .tag-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .tag-strip > button { display: flex; height: 26px; align-items: center; gap: 5px; padding: 0 7px; border: 0; border-radius: 6px; background: color-mix(in oklch, var(--tone-color, var(--accent)) 13%, var(--surface-2)); color: var(--text-2); font-size: calc(12px * var(--font-scale)); }
 .tag-strip > button > i, .tag-picker-options button > i { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--tone-color, var(--accent)); }
