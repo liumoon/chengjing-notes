@@ -17,6 +17,8 @@ export interface ImportCopy {
   markdownTabHint: string;
   pasteImageSaving: string;
   pasteImageFailed: string;
+  pasteAttachmentSaving: string;
+  pasteAttachmentFailed: string;
   switching: string;
   converting: string;
   importTitle: string;
@@ -76,6 +78,7 @@ const zhTW: ImportCopy = {
   modeRich: "富文字", modeMarkdown: "Markdown", modeHint: "Markdown 會保留標題、清單、表格與程式碼的結構，空白與標記風格可能正規化。",
   markdownSearch: "在卡片內搜尋", markdownSearchNext: "下一筆", markdownSearchPrevious: "上一筆", markdownSearchEmpty: "找不到符合的文字", markdownTabHint: "Tab 縮排",
   pasteImageSaving: "正在保存貼上的圖片…", pasteImageFailed: "貼上圖片保存失敗，請稍後再試。",
+  pasteAttachmentSaving: "正在保存貼上的附件…", pasteAttachmentFailed: "貼上附件保存失敗，請稍後再試。",
   switching: "切換編輯模式…", converting: "轉換內容格式…",
   importTitle: "匯入文件", importDropHint: "把檔案拖進來，或選擇檔案", importChooseFiles: "選擇檔案",
   importProgress: "匯入 {done}/{total}", importReading: "讀取 {name}…", importParsing: "解析 {name}…", importSaving: "保存 {name}…",
@@ -101,6 +104,7 @@ const zhCN: ImportCopy = {
   modeRich: "富文本", modeMarkdown: "Markdown", modeHint: "Markdown 会保留标题、列表、表格与代码的结构，空白与标记风格可能被规范化。",
   markdownSearch: "在卡片内搜索", markdownSearchNext: "下一处", markdownSearchPrevious: "上一处", markdownSearchEmpty: "未找到匹配的文字", markdownTabHint: "Tab 缩进",
   pasteImageSaving: "正在保存粘贴的图片…", pasteImageFailed: "粘贴图片保存失败，请稍后重试。",
+  pasteAttachmentSaving: "正在保存粘贴的附件…", pasteAttachmentFailed: "粘贴附件保存失败，请稍后重试。",
   switching: "切换编辑模式…", converting: "转换内容格式…",
   importTitle: "导入文档", importDropHint: "把文件拖进来，或选择文件", importChooseFiles: "选择文件",
   importProgress: "导入 {done}/{total}", importReading: "读取 {name}…", importParsing: "解析 {name}…", importSaving: "保存 {name}…",
@@ -125,6 +129,7 @@ const en: ImportCopy = {
   modeRich: "Rich text", modeMarkdown: "Markdown", modeHint: "Markdown keeps headings, lists, tables and code blocks. Whitespace and marker styles may be normalized.",
   markdownSearch: "Search in card", markdownSearchNext: "Next match", markdownSearchPrevious: "Previous match", markdownSearchEmpty: "No matches found", markdownTabHint: "Tab to indent",
   pasteImageSaving: "Saving pasted image…", pasteImageFailed: "Could not save the pasted image. Try again.",
+  pasteAttachmentSaving: "Saving pasted attachment…", pasteAttachmentFailed: "Could not save the pasted attachment. Try again.",
   switching: "Switching editor mode…", converting: "Converting content…",
   importTitle: "Import documents", importDropHint: "Drop files here, or choose files", importChooseFiles: "Choose files",
   importProgress: "Importing {done}/{total}", importReading: "Reading {name}…", importParsing: "Parsing {name}…", importSaving: "Saving {name}…",
@@ -149,6 +154,7 @@ const ja: ImportCopy = {
   modeRich: "リッチテキスト", modeMarkdown: "Markdown", modeHint: "Markdown は見出し・リスト・表・コードブロックの構造を保持します。空白や記号の書式は正規化される場合があります。",
   markdownSearch: "カード内を検索", markdownSearchNext: "次へ", markdownSearchPrevious: "前へ", markdownSearchEmpty: "一致する文字が見つかりません", markdownTabHint: "Tab でインデント",
   pasteImageSaving: "貼り付けた画像を保存しています…", pasteImageFailed: "貼り付けた画像を保存できませんでした。もう一度お試しください。",
+  pasteAttachmentSaving: "貼り付けた添付ファイルを保存しています…", pasteAttachmentFailed: "貼り付けた添付ファイルを保存できませんでした。もう一度お試しください。",
   switching: "編集モードを切り替えています…", converting: "コンテンツを変換しています…",
   importTitle: "ドキュメントを取り込む", importDropHint: "ファイルをドラッグするか、選択してください", importChooseFiles: "ファイルを選択",
   importProgress: "取り込み中 {done}/{total}", importReading: "{name} を読み込んでいます…", importParsing: "{name} を解析しています…", importSaving: "{name} を保存しています…",
@@ -173,6 +179,7 @@ const ko: ImportCopy = {
   modeRich: "리치 텍스트", modeMarkdown: "Markdown", modeHint: "Markdown은 제목, 목록, 표, 코드 블록의 구조를 보존합니다. 공백과 표기 스타일은 정규화될 수 있습니다.",
   markdownSearch: "카드에서 검색", markdownSearchNext: "다음", markdownSearchPrevious: "이전", markdownSearchEmpty: "일치하는 텍스트가 없습니다", markdownTabHint: "Tab으로 들여쓰기",
   pasteImageSaving: "붙여넣은 이미지를 저장하는 중…", pasteImageFailed: "붙여넣은 이미지를 저장하지 못했습니다. 다시 시도하세요.",
+  pasteAttachmentSaving: "붙여넣은 첨부 파일을 저장하는 중…", pasteAttachmentFailed: "붙여넣은 첨부 파일을 저장하지 못했습니다. 다시 시도하세요.",
   switching: "편집 모드 전환 중…", converting: "내용 변환 중…",
   importTitle: "문서 가져오기", importDropHint: "파일을 끌어놓거나 파일을 선택하세요", importChooseFiles: "파일 선택",
   importProgress: "가져오는 중 {done}/{total}", importReading: "{name} 읽는 중…", importParsing: "{name} 분석 중…", importSaving: "{name} 저장 중…",

@@ -177,6 +177,13 @@ export function CardEditorPanel() {
     }
   }
 
+  async function pasteAttachments(inputs: SelectedAttachmentInput[]) {
+    const result = await addSelectedAttachmentsToCard(activeCard.id, inputs);
+    if (result.failures.length) showHighlightNotice(attachmentCopy.attachmentFailed);
+    if (!result.attachments.length && result.failures.length) throw new Error("clipboard-attachment-failed");
+    return result.attachments;
+  }
+
   async function chooseAttachments() {
     if (addingAttachments) return;
     if (!window.chengjing?.files) {
@@ -283,7 +290,7 @@ export function CardEditorPanel() {
           </div>
           {headerAttachments.map((attachment) => <AttachmentPreview key={attachment.id} attachment={attachment} downloadLabel={t("card.download", { name: attachment.name })} onRemove={() => detachAttachment(attachment)} />)}
           {card.sourceUrl && <a className="source-link" href={card.sourceUrl} target="_blank" rel="noreferrer"><ArrowUpRight size={14} /><span>{t("card.source")}</span><code>{new URL(card.sourceUrl).hostname}</code></a>}
-          <CardContentEditor contentHtml={card.contentHtml} onChange={(contentHtml, plainText) => update({ contentHtml, plainText })} onHighlight={createHighlight} taskOwnerId={card.id} attachments={attachments} onPasteImages={(inputs: ClipboardImageInput[]) => persistInlineClipboardImages(activeCard.id, inputs)} onPasteImagesRollback={(saved) => rollbackInlineClipboardImages(activeCard.id, saved)} />
+          <CardContentEditor contentHtml={card.contentHtml} onChange={(contentHtml, plainText) => update({ contentHtml, plainText })} onHighlight={createHighlight} taskOwnerId={card.id} attachments={attachments} onPasteImages={(inputs: ClipboardImageInput[]) => persistInlineClipboardImages(activeCard.id, inputs)} onPasteImagesRollback={(saved) => rollbackInlineClipboardImages(activeCard.id, saved)} onPasteAttachments={pasteAttachments} />
         </div>
       ) : (
         <div className="card-info-panel">

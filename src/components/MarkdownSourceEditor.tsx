@@ -3,7 +3,9 @@ import { ChevronDown, ChevronUp, Search } from "lucide-react";
 import { getImportCopy } from "../lib/importCopy";
 import { EDITOR_FLUSH_EVENT } from "../lib/editorMode";
 import { clipboardMarkdownForAttachments, extractClipboardImages } from "../lib/clipboardImages";
+import { extractClipboardAttachments } from "../lib/clipboardAttachments";
 import type { ClipboardImageInput } from "../lib/clipboardImages";
+import type { SelectedAttachmentInput } from "../lib/cardAttachments";
 import type { AttachmentRecord } from "../types";
 import { useI18n } from "../hooks/useI18n";
 
@@ -25,6 +27,7 @@ interface MarkdownSourceEditorProps {
   taskOwnerId?: string;
   onPasteImages?: (inputs: ClipboardImageInput[]) => Promise<AttachmentRecord[]> | AttachmentRecord[];
   onPasteImagesRollback?: (attachments: AttachmentRecord[]) => Promise<void> | void;
+  onPasteAttachments?: (inputs: SelectedAttachmentInput[]) => Promise<AttachmentRecord[]> | AttachmentRecord[];
 }
 
 function indentRange(value: string, start: number, end: number, direction: 1 | -1) {
@@ -40,7 +43,7 @@ function indentRange(value: string, start: number, end: number, direction: 1 | -
   return { value: value.slice(0, lineStart) + next + value.slice(sliceEnd), delta: -(block.length - next.length) };
 }
 
-export function MarkdownSourceEditor({ markdown, onChange, placeholder, autoFocus = false, taskOwnerId, onPasteImages, onPasteImagesRollback }: MarkdownSourceEditorProps) {
+export function MarkdownSourceEditor({ markdown, onChange, placeholder, autoFocus = false, taskOwnerId, onPasteImages, onPasteImagesRollback, onPasteAttachments }: MarkdownSourceEditorProps) {
   const { language } = useI18n();
   const copy = getImportCopy(language);
   const textarea = useRef<HTMLTextAreaElement | null>(null);
@@ -49,6 +52,7 @@ export function MarkdownSourceEditor({ markdown, onChange, placeholder, autoFocu
   const pending = useRef<(() => void) | null>(null);
   const onPasteImagesRef = useRef(onPasteImages);
   const onPasteImagesRollbackRef = useRef(onPasteImagesRollback);
+  const onPasteAttachmentsRef = useRef(onPasteAttachments);
   const taskOwnerIdRef = useRef(taskOwnerId);
   const mounted = useRef(true);
   const latest = useRef(markdown);
@@ -56,6 +60,7 @@ export function MarkdownSourceEditor({ markdown, onChange, placeholder, autoFocu
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [pasteState, setPasteState] = useState<"idle" | "saving" | "error">("idle");
+  const [pasteKind, setPasteKind] = useState<"image" | "attachment">("image");
   taskOwnerIdRef.current = taskOwnerId;
 
   useEffect(() => {
@@ -71,7 +76,8 @@ export function MarkdownSourceEditor({ markdown, onChange, placeholder, autoFocu
   useEffect(() => {
     onPasteImagesRef.current = onPasteImages;
     onPasteImagesRollbackRef.current = onPasteImagesRollback;
-  }, [onPasteImages, onPasteImagesRollback]);
+    onPasteAttachmentsRef.current = onPasteAttachments;
+  }, [onPasteImages, onPasteImagesRollback, onPasteAttachments]);
 
   function commit(value: string) {
     latest.current = value;
@@ -136,22 +142,37 @@ export function MarkdownSourceEditor({ markdown, onChange, placeholder, autoFocu
   }
 
   async function onPaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const files = extractClipboardAttachments(event.nativeEvent);
     const images = extractClipboardImages(event.nativeEvent);
     const saveImages = onPasteImagesRef.current;
     const rollbackImages = onPasteImagesRollbackRef.current;
+    const saveAttachments = onPasteAttachmentsRef.current;
     const pasteOwnerId = taskOwnerIdRef.current;
-    if (!images.length || !saveImages) return;
+    if ((!images.length || !saveImages) && (!files.length || !saveAttachments)) return;
 
     event.preventDefault();
     const element = event.currentTarget;
     const originalValue = element.value;
     const originalStart = element.selectionStart;
     const originalEnd = element.selectionEnd;
+    setPasteKind(files.length ? "attachment" : "image");
     setPasteState("saving");
+    let attachmentError = false;
+    if (files.length && saveAttachments) {
+      try {
+        await Promise.resolve(saveAttachments(files));
+      } catch {
+        attachmentError = true;
+      }
+    }
+    if (!images.length || !saveImages) {
+      if (mounted.current) setPasteState(attachmentError ? "error" : "idle");
+      return;
+    }
     try {
       const saved = await Promise.resolve(saveImages(images));
       if (!saved.length) {
-        if (mounted.current) setPasteState("idle");
+        if (mounted.current) setPasteState(attachmentError ? "error" : "idle");
         return;
       }
       if (!mounted.current || !element.isConnected || taskOwnerIdRef.current !== pasteOwnerId) {
@@ -171,7 +192,7 @@ export function MarkdownSourceEditor({ markdown, onChange, placeholder, autoFocu
       setDraft(nextValue);
       commit(nextValue);
       requestAnimationFrame(() => element.setSelectionRange(caret, caret));
-      setPasteState("idle");
+      setPasteState(attachmentError ? "error" : "idle");
     } catch {
       if (mounted.current) setPasteState("error");
     }
@@ -188,8 +209,8 @@ export function MarkdownSourceEditor({ markdown, onChange, placeholder, autoFocu
           <button type="button" aria-label={copy.markdownSearchNext} title={copy.markdownSearchNext} disabled={!matches.length} onClick={() => setActive((value) => (value + 1) % Math.max(matches.length, 1))}><ChevronDown size={14} /></button>
         </label>
         <span className="markdown-hint">{copy.markdownTabHint}</span>
-        {pasteState === "saving" && <span role="status" className="save-state saving">{copy.pasteImageSaving}</span>}
-        {pasteState === "error" && <span role="alert" className="save-state error">{copy.pasteImageFailed}</span>}
+        {pasteState === "saving" && <span role="status" className="save-state saving">{pasteKind === "attachment" ? copy.pasteAttachmentSaving : copy.pasteImageSaving}</span>}
+        {pasteState === "error" && <span role="alert" className="save-state error">{pasteKind === "attachment" ? copy.pasteAttachmentFailed : copy.pasteImageFailed}</span>}
       </div>
       <textarea
         ref={textarea}

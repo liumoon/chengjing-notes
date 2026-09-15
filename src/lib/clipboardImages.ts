@@ -73,6 +73,10 @@ export function extractClipboardImages(event: ClipboardEvent): ClipboardImageInp
   const seen = new Set<Blob>();
   const add = (blob: Blob | null, declaredMime = "") => {
     if (!blob || seen.has(blob)) return;
+    const nativePath = "path" in blob ? (blob as File & { path?: unknown }).path : undefined;
+    // A file copied from Finder/Explorer is a regular attachment, even when
+    // its MIME is an image. Screenshots without a native path remain inline.
+    if (typeof nativePath === "string" && nativePath.trim()) return;
     const mime = normalizeClipboardMime(declaredMime || blob.type, blobName(blob));
     if (!isSupportedClipboardImageMime(mime)) return;
     seen.add(blob);

@@ -65,6 +65,13 @@ describe("剪貼簿圖片辨識", () => {
     expect(extractClipboardImages(event)).toEqual([{ blob: png, name: "截圖.png", mime: "image/png" }]);
   });
 
+  it("本機檔案圖片不走內嵌流程，交給一般附件流程", () => {
+    const png = new File(["png"], "photo.png", { type: "image/png" }) as File & { path: string };
+    png.path = "/Users/test/photo.png";
+    const event = { clipboardData: { files: [png] } } as unknown as ClipboardEvent;
+    expect(extractClipboardImages(event)).toEqual([]);
+  });
+
   it("支援 WebView 以 HTML data URL 提供剪貼簿圖片", async () => {
     const event = {
       clipboardData: {

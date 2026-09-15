@@ -8,6 +8,7 @@ import { getImportCopy } from "../lib/importCopy";
 import { syncCardTasksFromHtml } from "../lib/taskSync";
 import type { AttachmentRecord } from "../types";
 import type { ClipboardImageInput } from "../lib/clipboardImages";
+import type { SelectedAttachmentInput } from "../lib/cardAttachments";
 import { useI18n } from "../hooks/useI18n";
 
 /**
@@ -27,9 +28,10 @@ interface CardContentEditorProps {
   attachments?: AttachmentRecord[];
   onPasteImages?: (inputs: ClipboardImageInput[]) => Promise<AttachmentRecord[]> | AttachmentRecord[];
   onPasteImagesRollback?: (attachments: AttachmentRecord[]) => Promise<void> | void;
+  onPasteAttachments?: (inputs: SelectedAttachmentInput[]) => Promise<AttachmentRecord[]> | AttachmentRecord[];
 }
 
-export function CardContentEditor({ contentHtml, onChange, onHighlight, taskOwnerId, placeholder, attachments = [], onPasteImages, onPasteImagesRollback }: CardContentEditorProps) {
+export function CardContentEditor({ contentHtml, onChange, onHighlight, taskOwnerId, placeholder, attachments = [], onPasteImages, onPasteImagesRollback, onPasteAttachments }: CardContentEditorProps) {
   const { language } = useI18n();
   const copy = getImportCopy(language);
   const [mode, setMode] = useState<CardEditorMode>(() => readEditorMode());
@@ -109,8 +111,8 @@ export function CardContentEditor({ contentHtml, onChange, onHighlight, taskOwne
       </div>
       <p className="editor-mode-hint">{copy.modeHint}</p>
       {mode === "rich"
-        ? <RichEditor content={contentHtml} onChange={(html, text) => { htmlRef.current = html; return onChangeRef.current(html, text); }} placeholder={placeholder} onHighlight={onHighlight} taskOwnerId={taskOwnerId} attachments={attachments} onPasteImages={onPasteImages} onPasteImagesRollback={onPasteImagesRollback} compact />
-        : <MarkdownSourceEditor markdown={markdown} onChange={(value) => void handleMarkdownChange(value)} placeholder={placeholder} taskOwnerId={taskOwnerId} onPasteImages={onPasteImages} onPasteImagesRollback={onPasteImagesRollback} />}
+        ? <RichEditor content={contentHtml} onChange={(html, text) => { htmlRef.current = html; return onChangeRef.current(html, text); }} placeholder={placeholder} onHighlight={onHighlight} taskOwnerId={taskOwnerId} attachments={attachments} onPasteImages={onPasteImages} onPasteImagesRollback={onPasteImagesRollback} onPasteAttachments={onPasteAttachments} compact />
+        : <MarkdownSourceEditor markdown={markdown} onChange={(value) => void handleMarkdownChange(value)} placeholder={placeholder} taskOwnerId={taskOwnerId} onPasteImages={onPasteImages} onPasteImagesRollback={onPasteImagesRollback} onPasteAttachments={onPasteAttachments} />}
     </div>
   );
 }

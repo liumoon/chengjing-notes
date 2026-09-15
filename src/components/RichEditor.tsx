@@ -23,9 +23,11 @@ import { cardExtensions } from "../lib/markdownBridge";
 import { canonicalizeImageSrcs, releaseResolvedUrls, resolveInlineImageSrcs } from "../lib/attachmentRefs";
 import { attachmentUrl, shouldRevokeAttachmentUrl } from "../lib/attachments";
 import { extractClipboardImages } from "../lib/clipboardImages";
+import { extractClipboardAttachments } from "../lib/clipboardAttachments";
 import { getImportCopy } from "../lib/importCopy";
 import type { AttachmentRecord } from "../types";
 import type { ClipboardImageInput } from "../lib/clipboardImages";
+import type { SelectedAttachmentInput } from "../lib/cardAttachments";
 
 /**
  * 富文字模式。
@@ -45,6 +47,7 @@ interface RichEditorProps {
   attachments?: AttachmentRecord[];
   onPasteImages?: (inputs: ClipboardImageInput[]) => Promise<AttachmentRecord[]> | AttachmentRecord[];
   onPasteImagesRollback?: (attachments: AttachmentRecord[]) => Promise<void> | void;
+  onPasteAttachments?: (inputs: SelectedAttachmentInput[]) => Promise<AttachmentRecord[]> | AttachmentRecord[];
 }
 
 function setContentWithoutHistory(editor: Editor, html: string) {
@@ -54,7 +57,7 @@ function setContentWithoutHistory(editor: Editor, html: string) {
   }).run();
 }
 
-export function RichEditor({ content, onChange, placeholder, autoFocus = false, compact = false, onHighlight, taskOwnerId, attachments = [], onPasteImages, onPasteImagesRollback }: RichEditorProps) {
+export function RichEditor({ content, onChange, placeholder, autoFocus = false, compact = false, onHighlight, taskOwnerId, attachments = [], onPasteImages, onPasteImagesRollback, onPasteAttachments }: RichEditorProps) {
   const { t, language } = useI18n();
   const copy = getImportCopy(language);
   const resolvedPlaceholder = placeholder || t("editor.start");
@@ -63,6 +66,7 @@ export function RichEditor({ content, onChange, placeholder, autoFocus = false, 
   const onChangeRef = useRef(onChange);
   const onPasteImagesRef = useRef(onPasteImages);
   const onPasteImagesRollbackRef = useRef(onPasteImagesRollback);
+  const onPasteAttachmentsRef = useRef(onPasteAttachments);
   const taskOwnerIdRef = useRef(taskOwnerId);
   const attachmentsRef = useRef(attachments);
   const editorRef = useRef<Editor | null>(null);
@@ -71,6 +75,7 @@ export function RichEditor({ content, onChange, placeholder, autoFocus = false, 
   const mounted = useRef(true);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const [pasteState, setPasteState] = useState<"idle" | "saving" | "error">("idle");
+  const [pasteKind, setPasteKind] = useState<"image" | "attachment">("image");
   taskOwnerIdRef.current = taskOwnerId;
   const [initialContent] = useState(() => {
     const resolved = resolveInlineImageSrcs(content || "<p></p>", attachments);
@@ -89,9 +94,11 @@ export function RichEditor({ content, onChange, placeholder, autoFocus = false, 
         spellcheck: "true",
       },
       handlePaste: (_view, event) => {
+        const files = extractClipboardAttachments(event);
         const images = extractClipboardImages(event);
         const saveImages = onPasteImagesRef.current;
-        if (!images.length || !saveImages) return false;
+        const saveAttachments = onPasteAttachmentsRef.current;
+        if ((!images.length || !saveImages) && (!files.length || !saveAttachments)) return false;
 
         event.preventDefault();
         const activeEditor = editorRef.current;
@@ -100,10 +107,30 @@ export function RichEditor({ content, onChange, placeholder, autoFocus = false, 
         const rollbackImages = onPasteImagesRollbackRef.current;
         const originalDoc = activeEditor.state.doc;
         const originalSelection = activeEditor.state.selection;
+        setPasteKind(files.length ? "attachment" : "image");
         setPasteState("saving");
-        void Promise.resolve(saveImages(images)).then((saved) => {
+        void (async () => {
+          let attachmentError = false;
+          if (files.length && saveAttachments) {
+            try {
+              await Promise.resolve(saveAttachments(files));
+            } catch {
+              attachmentError = true;
+            }
+          }
+          if (!images.length || !saveImages) {
+            if (mounted.current) setPasteState(attachmentError ? "error" : "idle");
+            return;
+          }
+          let saved: AttachmentRecord[];
+          try {
+            saved = await Promise.resolve(saveImages(images));
+          } catch {
+            if (mounted.current) setPasteState("error");
+            return;
+          }
           if (!saved.length) {
-            if (mounted.current) setPasteState("idle");
+            if (mounted.current) setPasteState(attachmentError ? "error" : "idle");
             return;
           }
           const currentEditor = editorRef.current;
@@ -111,7 +138,7 @@ export function RichEditor({ content, onChange, placeholder, autoFocus = false, 
             return Promise.resolve(rollbackImages?.(saved))
               .catch(() => {})
               .then(() => {
-                if (mounted.current) setPasteState(taskOwnerIdRef.current === pasteOwnerId ? "error" : "idle");
+                if (mounted.current) setPasteState(taskOwnerIdRef.current === pasteOwnerId || attachmentError ? "error" : "idle");
               });
           }
           const previousAttachments = attachmentsRef.current;
@@ -142,7 +169,7 @@ export function RichEditor({ content, onChange, placeholder, autoFocus = false, 
             const inserted = currentEditor.chain().focus().insertContent(renderedImages).run();
             if (!inserted) throw new Error("clipboard-image-insert-failed");
             objectUrls.current.push(...createdUrls);
-            if (mounted.current) setPasteState("idle");
+            if (mounted.current) setPasteState(attachmentError ? "error" : "idle");
           } catch (error) {
             releaseResolvedUrls(createdUrls);
             attachmentsRef.current = previousAttachments;
@@ -153,7 +180,7 @@ export function RichEditor({ content, onChange, placeholder, autoFocus = false, 
                 throw error;
               });
           }
-        }).catch(() => { if (mounted.current) setPasteState("error"); });
+        })().catch(() => { if (mounted.current) setPasteState("error"); });
         return true;
       },
     },
@@ -200,9 +227,10 @@ export function RichEditor({ content, onChange, placeholder, autoFocus = false, 
     onChangeRef.current = onChange;
     onPasteImagesRef.current = onPasteImages;
     onPasteImagesRollbackRef.current = onPasteImagesRollback;
+    onPasteAttachmentsRef.current = onPasteAttachments;
     taskOwnerIdRef.current = taskOwnerId;
     attachmentsRef.current = attachments;
-  }, [onChange, onPasteImages, onPasteImagesRollback, taskOwnerId, attachments]);
+  }, [onChange, onPasteImages, onPasteImagesRollback, onPasteAttachments, taskOwnerId, attachments]);
 
   useEffect(() => {
     if (!editor || !taskOwnerId) return;
@@ -273,8 +301,8 @@ export function RichEditor({ content, onChange, placeholder, autoFocus = false, 
           {tool(getTableLabel(language), editor.isActive("table"), () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(), <Table size={15} />)}
         </div>
         <div>
-          {pasteState === "saving" && <span role="status" className="save-state saving">{copy.pasteImageSaving}</span>}
-          {pasteState === "error" && <span role="alert" className="save-state error">{copy.pasteImageFailed}</span>}
+          {pasteState === "saving" && <span role="status" className="save-state saving">{pasteKind === "attachment" ? copy.pasteAttachmentSaving : copy.pasteImageSaving}</span>}
+          {pasteState === "error" && <span role="alert" className="save-state error">{pasteKind === "attachment" ? copy.pasteAttachmentFailed : copy.pasteImageFailed}</span>}
           <span role={saveState === "error" ? "alert" : "status"} className={`save-state ${saveState}`}>{saveState === "error" ? ({"zh-TW":"儲存失敗，請勿關閉","zh-CN":"保存失败，请勿关闭",en:"Save failed. Keep this open.",ja:"保存できません。閉じないでください。",ko:"저장 실패. 닫지 마세요."})[language] : saveState === "saving" ? t("common.saving") : t("common.saved")}</span>
           {tool(t("editor.undo"), false, () => editor.chain().focus().undo().run(), <Undo2 size={15} />)}
           {tool(t("editor.redo"), false, () => editor.chain().focus().redo().run(), <Redo2 size={15} />)}
