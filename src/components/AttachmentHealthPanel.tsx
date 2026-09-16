@@ -4,7 +4,7 @@ import { formatBytes } from "../lib/utils";
 import { getAttachmentHealthCopy } from "../lib/attachmentHealthCopy";
 import { cleanOrphanAttachments, inspectAttachmentHealth, type AttachmentHealthIssue, type AttachmentHealthReport } from "../lib/attachmentHealth";
 import { useI18n } from "../hooks/useI18n";
-import { attachmentRef } from "../lib/attachmentRefs";
+import { attachmentRef, releaseResolvedUrls } from "../lib/attachmentRefs";
 import { attachmentUrl, portableAttachmentBlob, shouldRevokeAttachmentUrl } from "../lib/attachments";
 import type { AttachmentRecord, AttachmentRole } from "../types";
 
@@ -38,7 +38,7 @@ function AttachmentThumbnail({ attachment }: { attachment: AttachmentRecord }) {
     setSrc(next);
     setFailed(false);
     return () => {
-      if (next && shouldRevokeAttachmentUrl(attachment)) URL.revokeObjectURL(next);
+      if (next && shouldRevokeAttachmentUrl(attachment)) releaseResolvedUrls([next]);
     };
   }, [attachment, isImage]);
 

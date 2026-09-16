@@ -23,7 +23,7 @@ import {
   Trash2,
   Download,
 } from "lucide-react";
-import { db, moveCardToTrash, restoreCardVersion, updateCardWithHistory } from "../db";
+import { appendCardAttachmentsWithHistory, db, moveCardToTrash, restoreCardVersion, updateCardWithHistory } from "../db";
 import { useAppStore } from "../store";
 import type { AttachmentRecord, CardRecord } from "../types";
 import { localizedKindLabel, relativeTime } from "../lib/utils";
@@ -35,7 +35,9 @@ import { useI18n } from "../hooks/useI18n";
 import { TagPicker } from "./TagPicker";
 import { KnowledgeGroupPicker } from "./KnowledgeGroupPicker";
 import { getCardPropertyCopy } from "../lib/cardPropertyCopy";
-import { attachmentUrl, removeStoredAttachment, shouldRevokeAttachmentUrl } from "../lib/attachments";
+import { attachmentUrl, persistAttachment, removeStoredAttachment, shouldRevokeAttachmentUrl } from "../lib/attachments";
+import { releaseResolvedUrls } from "../lib/attachmentRefs";
+import { openMediaViewer } from "../lib/mediaViewer";
 import { persistInlineClipboardImages, rollbackInlineClipboardImages } from "../lib/clipboardImages";
 import type { ClipboardImageInput } from "../lib/clipboardImages";
 import { searchQueryTerms } from "../lib/searchIndex";
@@ -45,27 +47,45 @@ import { getKanbanCopy } from "../lib/kanbanCopy";
 
 const PdfAttachmentViewer = lazy(() => import("./PdfAttachmentViewer").then((module) => ({ default: module.PdfAttachmentViewer })));
 
-function StandardAttachmentPreview({ attachment, downloadLabel }: { attachment: AttachmentRecord; downloadLabel: string }) {
+function StandardAttachmentPreview({ attachment, downloadLabel, onSaveSvg }: { attachment: AttachmentRecord; downloadLabel: string; onSaveSvg?: (source: string) => Promise<boolean> }) {
   const [url, setUrl] = useState("");
+  const [svg, setSvg] = useState("");
+  const isSvg = attachment.mime === "image/svg+xml";
   useEffect(() => {
     const next = attachmentUrl(attachment);
     setUrl(next);
-    return () => { if (next && shouldRevokeAttachmentUrl(attachment)) URL.revokeObjectURL(next); };
+    return () => { if (next && shouldRevokeAttachmentUrl(attachment)) releaseResolvedUrls([next]); };
   }, [attachment]);
+  // SVG 要拿到原始碼，圖裡的文字才選得起來、也才改得動。
+  useEffect(() => {
+    if (!isSvg || !url) { setSvg(""); return; }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const blob = attachment.blob || (await (await fetch(url)).blob());
+        const text = await blob.text();
+        if (!cancelled) setSvg(text);
+      } catch {
+        if (!cancelled) setSvg("");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [attachment, isSvg, url]);
   if (!url) return null;
+  const open = () => openMediaViewer({ src: url, alt: attachment.name, attachmentId: attachment.id, svg: svg || undefined, onSaveSvg });
   // Source SVGs stay downloadable as originals; only sanitized inline SVGs are previewed.
-  if (attachment.mime === "image/svg+xml" && attachment.role === "source") {
+  if (isSvg && attachment.role === "source") {
     return <a className="attachment-download" href={url} download={attachment.name}><FileText size={16} />{downloadLabel}</a>;
   }
-  if (attachment.mime.startsWith("image/")) return <img className="attachment-image" src={url} alt={attachment.name} />;
+  if (attachment.mime.startsWith("image/")) return <img className="attachment-image" src={url} alt={attachment.name} role="button" tabIndex={0} onClick={open} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); } }} />;
   if (attachment.mime.startsWith("audio/")) return <audio className="attachment-media" controls src={url} />;
   if (attachment.mime.startsWith("video/")) return <video className="attachment-video" controls src={url} />;
   return <a className="attachment-download" href={url} download={attachment.name}><FileText size={16} />{downloadLabel}</a>;
 }
 
-function AttachmentPreview({ attachment, downloadLabel, onRemove }: { attachment: AttachmentRecord; downloadLabel: string; onRemove: () => void | Promise<void> }) {
+function AttachmentPreview({ attachment, downloadLabel, onRemove, onSaveSvg }: { attachment: AttachmentRecord; downloadLabel: string; onRemove: () => void | Promise<void>; onSaveSvg?: (source: string) => Promise<boolean> }) {
   if (attachment.mime === "application/pdf") return <Suspense fallback={<div className="pdf-document-preview is-loading" aria-label={attachment.name}><span className="pdf-preview-state" /></div>}><PdfAttachmentViewer attachment={attachment} onRemove={onRemove} /></Suspense>;
-  return <StandardAttachmentPreview attachment={attachment} downloadLabel={downloadLabel} />;
+  return <StandardAttachmentPreview attachment={attachment} downloadLabel={downloadLabel} onSaveSvg={onSaveSvg} />;
 }
 
 export function CardEditorPanel() {
@@ -154,6 +174,18 @@ export function CardEditorPanel() {
     await updateCardWithHistory(activeCard.id, patch);
   }
 
+  /** SVG 編輯後存成「新的一份附件」，原檔留在卡片上隨時拿得回來。 */
+  async function saveSvgVersion(attachment: AttachmentRecord, source: string) {
+    try {
+      const stem = attachment.name.replace(/\.svg$/i, "") || "svg";
+      const blob = new Blob([source], { type: "image/svg+xml" });
+      const created = await persistAttachment(`${stem}-edited.svg`, blob, "image/svg+xml", undefined, attachment.role || "inline");
+      await appendCardAttachmentsWithHistory(activeCard.id, [created.id]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
   async function detachAttachment(attachment: AttachmentRecord) {
     await update({ attachmentIds: activeCard.attachmentIds.filter((id) => id !== attachment.id) });
     const usedElsewhere = await db.cards.filter((item) => item.id !== activeCard.id && item.attachmentIds.includes(attachment.id)).count();
@@ -288,7 +320,7 @@ export function CardEditorPanel() {
             </button>
             <input ref={attachmentInputRef} className="sr-only" type="file" multiple onChange={onAttachmentInputChange} />
           </div>
-          {headerAttachments.map((attachment) => <AttachmentPreview key={attachment.id} attachment={attachment} downloadLabel={t("card.download", { name: attachment.name })} onRemove={() => detachAttachment(attachment)} />)}
+          {headerAttachments.map((attachment) => <AttachmentPreview key={attachment.id} attachment={attachment} downloadLabel={t("card.download", { name: attachment.name })} onRemove={() => detachAttachment(attachment)} onSaveSvg={(source) => saveSvgVersion(attachment, source)} />)}
           {card.sourceUrl && <a className="source-link" href={card.sourceUrl} target="_blank" rel="noreferrer"><ArrowUpRight size={14} /><span>{t("card.source")}</span><code>{new URL(card.sourceUrl).hostname}</code></a>}
           <CardContentEditor contentHtml={card.contentHtml} onChange={(contentHtml, plainText) => update({ contentHtml, plainText })} onHighlight={createHighlight} taskOwnerId={card.id} attachments={attachments} onPasteImages={(inputs: ClipboardImageInput[]) => persistInlineClipboardImages(activeCard.id, inputs)} onPasteImagesRollback={(saved) => rollbackInlineClipboardImages(activeCard.id, saved)} onPasteAttachments={pasteAttachments} />
         </div>

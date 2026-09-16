@@ -27,6 +27,8 @@ interface AppState {
   temperature: number;
   spaceSearch: boolean;
   fontScale: number;
+  editorZoom: number;
+  readingWidth: boolean;
   language: AppLanguage;
   aiDraft: string;
   aiActionRequest: { id: string; prompt: string } | null;
@@ -57,6 +59,8 @@ interface AppState {
   setTemperature: (value: number) => void;
   setSpaceSearch: (value: boolean) => void;
   setFontScale: (value: number) => void;
+  setEditorZoom: (value: number) => void;
+  setReadingWidth: (value: boolean) => void;
   setLanguage: (language: AppLanguage) => void;
 }
 
@@ -112,6 +116,8 @@ export const useAppStore = create<AppState>()(
       temperature: 0.55,
       spaceSearch: true,
       fontScale: 1,
+      editorZoom: 1,
+      readingWidth: false,
       language: initialLanguage(),
       aiDraft: "",
       aiActionRequest: null,
@@ -142,6 +148,8 @@ export const useAppStore = create<AppState>()(
       setTemperature: (temperature) => set({ temperature }),
       setSpaceSearch: (spaceSearch) => set({ spaceSearch }),
       setFontScale: (fontScale) => set({ fontScale }),
+      setEditorZoom: (editorZoom) => set({ editorZoom }),
+      setReadingWidth: (readingWidth) => set({ readingWidth }),
       setLanguage: (language) => set({ language }),
     }),
     {
@@ -160,6 +168,8 @@ export const useAppStore = create<AppState>()(
         temperature: state.temperature,
         spaceSearch: state.spaceSearch,
         fontScale: state.fontScale,
+        editorZoom: state.editorZoom,
+        readingWidth: state.readingWidth,
         language: state.language,
       }),
     },

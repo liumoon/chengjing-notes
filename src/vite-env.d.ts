@@ -155,7 +155,7 @@ interface Window {
       }>;
     };
     clipboard: {
-      write: (request: { text: string; payload: Record<string, unknown> | null }) => Promise<{ written: boolean }>;
+      write: (request: { text: string; payload: Record<string, unknown> | null; html?: string }) => Promise<{ written: boolean }>;
       read: () => Promise<{ text: string; payload: Record<string, unknown> | null }>;
     };
     quickCapture?: {

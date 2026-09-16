@@ -318,3 +318,12 @@ html[data-platform="android"] .mobile-command-close { display:grid; place-items:
 .markdown-hint { display: none; }
 .import-drop-zone { min-height: 168px; padding: 18px; }
 .import-results li { grid-template-columns: 16px minmax(0, 1fr) auto; }
+
+/* 窄屏：編輯區填滿、Markdown 預覽與圖片放大檢視 */
+html[data-platform="android"] .rich-editor .ProseMirror { min-height: 46vh; }
+html[data-platform="android"] .markdown-source-input.markdown-codemirror { min-height: 52vh; }
+html[data-platform="android"] .markdown-codemirror .cm-content { min-height: 46vh; padding: 12px 13px; }
+html[data-platform="android"] .markdown-source-tools > button { min-width: 40px; min-height: 40px; }
+html[data-platform="android"] .media-viewer-bar { min-height: 56px; padding: 10px 12px; }
+html[data-platform="android"] .media-viewer-tools > button, html[data-platform="android"] .media-viewer-tools > a { width: 44px; height: 44px; }
+html[data-platform="android"] .media-viewer-stage { padding: 6px 10px 18px; }

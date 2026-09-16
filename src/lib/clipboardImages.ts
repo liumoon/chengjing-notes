@@ -41,7 +41,7 @@ function blobName(blob: Blob) {
   return "name" in blob ? String((blob as File).name || "") : "";
 }
 
-function dataImageInput(src: string, alt = ""): ClipboardImageInput | null {
+export function dataImageInput(src: string, alt = ""): ClipboardImageInput | null {
   const mime = normalizeClipboardMime(String(src || "").match(/^data:([^;,]+)/i)?.[1] || "", "");
   if (!mime) return null;
   const blob = imageDataUrlToBlob(src);
@@ -51,7 +51,8 @@ function dataImageInput(src: string, alt = ""): ClipboardImageInput | null {
   return { blob, name: String(alt || "").trim(), mime };
 }
 
-function extractDataImagesFromHtml(html: string) {
+/** WebView 與部分瀏覽器只把圖片放在 text/html 的 data URL 裡。 */
+export function extractDataImagesFromHtml(html: string) {
   if (!html || typeof DOMParser === "undefined") return [] as ClipboardImageInput[];
   const document = new DOMParser().parseFromString(html, "text/html");
   const images: ClipboardImageInput[] = [];
@@ -67,34 +68,55 @@ function extractDataImagesFromHtml(html: string) {
   return images;
 }
 
+/**
+ * Chromium exposes the same clipboard image as two *different* Blob objects,
+ * one through `items` and one through `files`, so identity-based dedupe lets
+ * a single screenshot through twice. `items` is the primary source, `files`
+ * only fills the gap, and the dedupe key is the shape of the payload.
+ */
 export function extractClipboardImages(event: ClipboardEvent): ClipboardImageInput[] {
   const data = event.clipboardData;
   const images: ClipboardImageInput[] = [];
-  const seen = new Set<Blob>();
+  const seen = new Set<string>();
   const add = (blob: Blob | null, declaredMime = "") => {
-    if (!blob || seen.has(blob)) return;
+    if (!blob) return;
     const nativePath = "path" in blob ? (blob as File & { path?: unknown }).path : undefined;
     // A file copied from Finder/Explorer is a regular attachment, even when
     // its MIME is an image. Screenshots without a native path remain inline.
     if (typeof nativePath === "string" && nativePath.trim()) return;
     const mime = normalizeClipboardMime(declaredMime || blob.type, blobName(blob));
     if (!isSupportedClipboardImageMime(mime)) return;
-    seen.add(blob);
+    const key = clipboardImageKey(blob, mime);
+    if (seen.has(key)) return;
+    seen.add(key);
     images.push({ blob, name: blobName(blob), mime });
   };
+  const itemFiles: Array<{ blob: Blob | null; mime: string }> = [];
   Array.from(data?.items || []).forEach((item) => {
-    if (item.kind === "file") add(item.getAsFile(), item.type);
+    if (item.kind === "file") itemFiles.push({ blob: item.getAsFile(), mime: item.type });
   });
+  itemFiles.forEach((entry) => add(entry.blob, entry.mime));
   // Some WebViews expose clipboard images through files but not items.
-  Array.from(data?.files || []).forEach((file) => add(file));
+  if (!itemFiles.length) Array.from(data?.files || []).forEach((file) => add(file));
   // Android WebViews and some browser integrations expose copied screenshots
   // as an HTML data URL instead of a file clipboard item.
   if (!images.length) {
     let html = "";
     try { html = data?.getData?.("text/html") || ""; } catch { /* clipboard access can be denied */ }
-    images.push(...extractDataImagesFromHtml(html));
+    // 保留 `<img alt>` 當檔名：`add()` 會從 Blob 重新推檔名，那樣就只剩 image.png。
+    extractDataImagesFromHtml(html).forEach((image) => {
+      const key = clipboardImageKey(image.blob, image.mime);
+      if (seen.has(key)) return;
+      seen.add(key);
+      images.push(image);
+    });
   }
   return images;
+}
+
+export function clipboardImageKey(blob: Blob, mime = "") {
+  const normalized = normalizeClipboardMime(mime || blob.type, blobName(blob));
+  return `${normalized || "unknown"}:${blob.size}:${blobName(blob)}`;
 }
 
 function imageExtension(mime: string) {
@@ -129,8 +151,16 @@ export async function persistClipboardImages(inputs: ClipboardImageInput[]): Pro
   }
 
   const created: AttachmentRecord[] = [];
+  const fingerprints = new Set<string>();
   try {
-    for (const [index, input] of normalized.entries()) {
+    const batch: typeof normalized = [];
+    for (const input of normalized) {
+      const key = await clipboardBlobFingerprint(input);
+      if (fingerprints.has(key)) continue;
+      fingerprints.add(key);
+      batch.push(input);
+    }
+    for (const [index, input] of batch.entries()) {
       let blob = input.blob.type === input.mime ? input.blob : input.blob.slice(0, input.blob.size, input.mime);
       if (input.mime === "image/svg+xml") {
         const sanitized = sanitizeSvg(await blob.text());
@@ -144,6 +174,16 @@ export async function persistClipboardImages(inputs: ClipboardImageInput[]): Pro
     await Promise.all(created.map((attachment) => removeStoredAttachment(attachment).catch(() => {})));
     throw error;
   }
+}
+
+/** Same bytes pasted twice in one event must not become two attachments. */
+export async function clipboardBlobFingerprint(input: ClipboardImageInput) {
+  const head = new Uint8Array(await input.blob.slice(0, 64).arrayBuffer());
+  const tail = new Uint8Array(await input.blob.slice(-64).arrayBuffer());
+  let hash = 2166136261;
+  for (const byte of head) hash = Math.imul(hash ^ byte, 16777619) >>> 0;
+  for (const byte of tail) hash = Math.imul(hash ^ byte, 16777619) >>> 0;
+  return `${input.mime || input.blob.type}:${input.blob.size}:${hash.toString(16)}`;
 }
 
 export async function removeClipboardImages(attachments: AttachmentRecord[]) {

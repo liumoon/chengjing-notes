@@ -30,6 +30,8 @@ const SAFE_ELEMENTS = new Set([
   "lineargradient",
   "radialgradient",
   "stop",
+  "marker",
+  "mask",
 ]);
 
 const SAFE_ATTRIBUTES = new Set([
@@ -79,10 +81,30 @@ const SAFE_ATTRIBUTES = new Set([
   "fx",
   "fy",
   "preserveaspectratio",
+  "clip-path",
+  "mask",
+  "filter",
+  "marker-start",
+  "marker-mid",
+  "marker-end",
+  "paint-order",
+  "clip-rule",
+  "color",
+  "letter-spacing",
+  "font-family",
+  "font-style",
+  "font-stretch",
+  "xml:space",
 ]);
 
 const SAFE_ID = /^[A-Za-z_][A-Za-z0-9_.:-]*$/;
-const DANGEROUS_VALUE = /(?:javascript\s*:|vbscript\s*:|data\s*:|blob\s*:|file\s*:|https?:\/\/|url\s*\(|@import|<|>)/i;
+const DANGEROUS_VALUE = /(?:javascript\s*:|vbscript\s*:|data\s*:|blob\s*:|file\s*:|https?:\/\/|@import|<|>)/i;
+/** `url(#id)` 指向同一份 SVG 裡的漸層／遮罩／裁剪；外部一律拒絕。 */
+const URL_REFERENCE = /url\(\s*(["']?)([^"')]+)\1\s*\)/gi;
+const LOCAL_FRAGMENT = /^#[A-Za-z_][A-Za-z0-9_.:-]*$/;
+const REFERENCE_ATTRIBUTES = new Set([
+  "fill", "stroke", "clip-path", "mask", "filter", "marker-start", "marker-mid", "marker-end", "fill-opacity",
+]);
 
 export interface SanitizedSvg {
   svg: string;
@@ -157,8 +179,70 @@ function sanitizeAttributes(element: Element, warnings: string[]) {
     if (lowerName === "id" && !SAFE_ID.test(value)) {
       element.removeAttribute(name);
       warnings.push("svg-invalid-id");
+      return;
+    }
+    if (REFERENCE_ATTRIBUTES.has(lowerName) && /url\s*\(/i.test(value)) {
+      const targets = [...value.matchAll(URL_REFERENCE)].map((match) => String(match[2] || "").trim());
+      const unsafe = !targets.length || targets.some((target) => !LOCAL_FRAGMENT.test(target));
+      if (unsafe) {
+        element.removeAttribute(name);
+        warnings.push(`svg-external-reference:${lowerName}`);
+      }
     }
   });
+}
+
+/**
+ * 第二輪才檢查 `url(#id)` 的目標存不存在：屬性清理是第一輪，
+ * 被移除的 `<filter>`／`<mask>` 會讓參考變成悬空指針，渲染時整塊變黑。
+ */
+function dropDanglingReferences(root: Element, warnings: string[]) {
+  const ids = new Set<string>();
+  root.querySelectorAll("[id]").forEach((element) => {
+    const id = element.getAttribute("id");
+    if (id) ids.add(id);
+  });
+  root.querySelectorAll("*").forEach((element) => {
+    [...element.attributes].forEach((attribute) => {
+      const lowerName = attribute.name.toLowerCase();
+      if (!REFERENCE_ATTRIBUTES.has(lowerName) || !/url\s*\(/i.test(attribute.value)) return;
+      const targets = [...attribute.value.matchAll(URL_REFERENCE)].map((match) => String(match[2] || "").trim());
+      const dangling = targets.some((target) => !LOCAL_FRAGMENT.test(target) || !ids.has(target.slice(1)));
+      if (dangling) {
+        element.removeAttribute(attribute.name);
+        warnings.push(`svg-dangling-reference:${lowerName}`);
+      }
+    });
+  });
+}
+
+/**
+ * 抽出 SVG 裡的文字。SVG 用 `<img>` 顯示時文字選不起來，
+ * 放大檢視因此改成內嵌渲染並提供「複製其中文字」。
+ */
+export function svgTextContent(source: string) {
+  const text = String(source || "");
+  if (!text.trim() || typeof DOMParser === "undefined") return "";
+  try {
+    const parsed = new DOMParser().parseFromString(text, "image/svg+xml");
+    if (parsed.querySelector("parsererror")) return "";
+    const parts: string[] = [];
+    // `<text>` 的 textContent 已經包含巢狀 `<tspan>`，所以以 `<text>` 為單位；
+    // 直接挂在 svg／g 底下的 tspan（不合法但看得到）才另外補上。
+    parsed.querySelectorAll("text").forEach((element) => {
+      const value = String(element.textContent || "").replace(/\s+/g, " ").trim();
+      if (value) parts.push(value);
+    });
+    parsed.querySelectorAll("tspan").forEach((element) => {
+      const parent = element.parentElement?.localName?.toLowerCase();
+      if (parent === "text") return;
+      const value = String(element.textContent || "").replace(/\s+/g, " ").trim();
+      if (value) parts.push(value);
+    });
+    return parts.join("\n");
+  } catch {
+    return "";
+  }
 }
 
 export function sanitizeSvg(source: string): SanitizedSvg | null {
@@ -205,6 +289,7 @@ export function sanitizeSvg(source: string): SanitizedSvg | null {
   } catch {
     return null;
   }
+  dropDanglingReferences(root, warnings);
   root.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   return { svg: new XMLSerializer().serializeToString(root), warnings };
 }

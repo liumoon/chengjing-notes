@@ -55,15 +55,35 @@ export function resolveInlineImageSrcs(html: string, attachments: AttachmentReco
     } else {
       // 附件已被移除時保留可讀的占位，不留破圖。
       image.setAttribute("data-missing-attachment", attachmentIdFromRef(src));
-      image.setAttribute("src", "");
+      // 不寫 src=""：空字串會被瀏覽器解析成目前頁面，平白多一次失敗請求。
+      image.removeAttribute("src");
     }
   });
   return { html: document.body.innerHTML, resolved: created };
 }
 
+/** 還在使用中的 blob URL：畫面裡還有圖片指向它，或還有排程等著用。 */
+const pendingReleases = new Map<string, ReturnType<typeof setTimeout>>();
+
+/**
+ * 回收本機圖片 URL。
+ *
+ * 不能立刻 revoke：ProseMirror 會重用 DOM 節點、瀏覽器也可能在換模式後
+ * 才重新取圖，太早回收就會出現 `ERR_FILE_NOT_FOUND` 的破圖。
+ * 因此延後回收，屆時若畫面仍引用同一個 URL 就跳過。
+ */
+const RELEASE_DELAY_MS = 4000;
+
 export function releaseResolvedUrls(urls: string[]) {
   for (const url of urls) {
-    if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+    if (!url.startsWith("blob:")) continue;
+    if (pendingReleases.has(url)) continue;
+    const timer = setTimeout(() => {
+      pendingReleases.delete(url);
+      if (typeof document !== "undefined" && document.querySelector(`img[src="${url}"]`)) return;
+      URL.revokeObjectURL(url);
+    }, RELEASE_DELAY_MS);
+    pendingReleases.set(url, timer);
   }
 }
 

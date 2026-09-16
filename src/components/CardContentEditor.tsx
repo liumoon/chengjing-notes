@@ -6,6 +6,7 @@ import { fromMarkdown, plainTextFromHtml, toMarkdown } from "../lib/contentPipel
 import { readEditorMode, requestEditorFlush, writeEditorMode, type CardEditorMode } from "../lib/editorMode";
 import { getImportCopy } from "../lib/importCopy";
 import { syncCardTasksFromHtml } from "../lib/taskSync";
+import { downloadRemoteAssets, remoteAssetBlob, remoteAssetName } from "../lib/documentBridge";
 import type { AttachmentRecord } from "../types";
 import type { ClipboardImageInput } from "../lib/clipboardImages";
 import type { SelectedAttachmentInput } from "../lib/cardAttachments";
@@ -29,9 +30,11 @@ interface CardContentEditorProps {
   onPasteImages?: (inputs: ClipboardImageInput[]) => Promise<AttachmentRecord[]> | AttachmentRecord[];
   onPasteImagesRollback?: (attachments: AttachmentRecord[]) => Promise<void> | void;
   onPasteAttachments?: (inputs: SelectedAttachmentInput[]) => Promise<AttachmentRecord[]> | AttachmentRecord[];
+  /** Markdown 預覽裡的網路圖片，只在使用者明確點擊同意後才走到這裡。 */
+  onDownloadRemoteImage?: (url: string) => Promise<AttachmentRecord | null>;
 }
 
-export function CardContentEditor({ contentHtml, onChange, onHighlight, taskOwnerId, placeholder, attachments = [], onPasteImages, onPasteImagesRollback, onPasteAttachments }: CardContentEditorProps) {
+export function CardContentEditor({ contentHtml, onChange, onHighlight, taskOwnerId, placeholder, attachments = [], onPasteImages, onPasteImagesRollback, onPasteAttachments, onDownloadRemoteImage }: CardContentEditorProps) {
   const { language } = useI18n();
   const copy = getImportCopy(language);
   const [mode, setMode] = useState<CardEditorMode>(() => readEditorMode());
@@ -91,6 +94,22 @@ export function CardContentEditor({ contentHtml, onChange, onHighlight, taskOwne
     }
   }
 
+  /**
+   * Markdown 預覽中的網路圖片預設不連線；使用者點提示後才下載，
+   * 成功就把網址換成 `attachment://`，失敗就保留原網址，不弄丟內容。
+   */
+  async function handleDownloadRemoteImage(url: string): Promise<AttachmentRecord | null> {
+    if (onDownloadRemoteImage) return onDownloadRemoteImage(url);
+    if (!onPasteImages) return null;
+    const [asset] = await downloadRemoteAssets([url]);
+    if (!asset?.ok) return null;
+    const blob = remoteAssetBlob(asset);
+    const mime = asset.mime || "";
+    if (!blob || !mime.startsWith("image/")) return null;
+    const created = await onPasteImages([{ blob, name: remoteAssetName(url), mime }]);
+    return created[0] ?? null;
+  }
+
   async function handleMarkdownChange(value: string) {
     setMarkdown(value);
     converting.current = true;
@@ -112,7 +131,7 @@ export function CardContentEditor({ contentHtml, onChange, onHighlight, taskOwne
       <p className="editor-mode-hint">{copy.modeHint}</p>
       {mode === "rich"
         ? <RichEditor content={contentHtml} onChange={(html, text) => { htmlRef.current = html; return onChangeRef.current(html, text); }} placeholder={placeholder} onHighlight={onHighlight} taskOwnerId={taskOwnerId} attachments={attachments} onPasteImages={onPasteImages} onPasteImagesRollback={onPasteImagesRollback} onPasteAttachments={onPasteAttachments} compact />
-        : <MarkdownSourceEditor markdown={markdown} onChange={(value) => void handleMarkdownChange(value)} placeholder={placeholder} taskOwnerId={taskOwnerId} onPasteImages={onPasteImages} onPasteImagesRollback={onPasteImagesRollback} onPasteAttachments={onPasteAttachments} />}
+        : <MarkdownSourceEditor markdown={markdown} onChange={(value) => void handleMarkdownChange(value)} placeholder={placeholder} taskOwnerId={taskOwnerId} attachments={attachments} onPasteImages={onPasteImages} onPasteImagesRollback={onPasteImagesRollback} onPasteAttachments={onPasteAttachments} onDownloadRemoteImage={(url) => handleDownloadRemoteImage(url)} />}
     </div>
   );
 }

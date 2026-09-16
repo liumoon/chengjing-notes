@@ -1179,10 +1179,14 @@ ipcMain.handle("clipboard:write", async (_event, request = {}) => {
   const text = String(request.text || "").slice(0, 1_000_000);
   const payload = JSON.stringify(request.payload || null);
   if (payload.length > 500_000) throw new Error("clipboard-payload-too-large");
+  // 呼叫端已經排好版時就直接用那份 HTML；只有純文字時才自己合成段落，
+  // 並且逐字保留 text/plain，不會把 & 或 Tab 二次跳脫成 &amp; / &#x9;。
+  const providedHtml = typeof request.html === "string" ? request.html.slice(0, 2_000_000) : "";
   const escaped = text.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character]);
+  const html = providedHtml || `<span>${escaped.replaceAll("\n", "<br>")}</span>`;
   await clipboard.write([new ClipboardItem({
     "text/plain": new Blob([text], { type: "text/plain" }),
-    "text/html": new Blob([`<span>${escaped.replaceAll("\n", "<br>")}</span>`], { type: "text/html" }),
+    "text/html": new Blob([html], { type: "text/html" }),
     [CLIPBOARD_MIME]: new Blob([payload], { type: CLIPBOARD_MIME }),
   })]);
   return { written: true };

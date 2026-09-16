@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   attachmentRef,
   attachmentIdFromRef,
@@ -7,6 +7,7 @@ import {
   inlineImageMarkdown,
   isAttachmentRef,
   referencedAttachmentIds,
+  releaseResolvedUrls,
   resolveInlineImageSrcs,
   rewriteRefsForExport,
   rewriteRefsForImport,
@@ -86,5 +87,49 @@ describe("referencedAttachmentIds", () => {
 
   it("inlineImageMarkdown 產生內嵌圖片語法", () => {
     expect(inlineImageMarkdown("圖", "att-1")).toBe("![圖](attachment://att-1)");
+  });
+});
+
+describe("blob URL 生命週期", () => {
+  let revoked: string[] = [];
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    revoked = [];
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation((url: string) => { revoked.push(url); });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+  });
+
+  it("附件遺失時移除 src，不留下會多打一次請求的空字串", () => {
+    const { html } = resolveInlineImageSrcs('<img src="attachment://gone" alt="遺失">', []);
+    expect(html).not.toContain('src=""');
+    expect(html).toContain('data-missing-attachment="gone"');
+  });
+
+  it("畫面還引用著的 blob URL 不立刻回收", () => {
+    document.body.innerHTML = '<img src="blob:chengjing/keep">';
+    releaseResolvedUrls(["blob:chengjing/keep"]);
+    vi.advanceTimersByTime(60_000);
+    expect(revoked).toEqual([]);
+  });
+
+  it("離開畫面後才回收 blob URL", () => {
+    document.body.innerHTML = '<img src="blob:chengjing/drop">';
+    releaseResolvedUrls(["blob:chengjing/drop"]);
+    document.body.innerHTML = "";
+    vi.advanceTimersByTime(60_000);
+    expect(revoked).toEqual(["blob:chengjing/drop"]);
+  });
+
+  it("重複釋放同一個 URL 只會回收一次", () => {
+    releaseResolvedUrls(["blob:chengjing/twice"]);
+    releaseResolvedUrls(["blob:chengjing/twice"]);
+    vi.advanceTimersByTime(60_000);
+    expect(revoked).toEqual(["blob:chengjing/twice"]);
   });
 });

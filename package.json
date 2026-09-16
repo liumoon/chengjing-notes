@@ -22,6 +22,7 @@
     "pretest": "node scripts/patch-transformers-gemma4.mjs",
     "test": "node scripts/patch-transformers-gemma4.mjs --check && vitest run src --environment jsdom && node --test electron/*.node.cjs",
     "qa": "node scripts/qa.mjs",
+    "qa:markdown-editor": "node scripts/qa-markdown-editor.mjs",
     "qa:functional": "node scripts/qa-functional.mjs",
     "qa:regressions": "node scripts/qa-regressions.mjs",
     "qa:typography": "node scripts/qa-typography.mjs",
@@ -89,6 +90,12 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/lang-markdown": "6.5.2",
+    "@codemirror/language": "6.12.4",
+    "@codemirror/search": "6.7.2",
+    "@codemirror/state": "6.7.5",
+    "@codemirror/view": "6.43.12",
     "@huggingface/transformers": "4.2.0",
     "@modelcontextprotocol/client": "^2.0.0",
     "@react-three/drei": "^10.7.8",

@@ -40,7 +40,7 @@ import { useI18n } from "../hooks/useI18n";
 import { createTaskChild, deleteTaskEverywhere, setTaskDone, setTaskDueAt, taskDescendants, timestampToDueDateInput, dueDateInputToTimestamp, updateTaskEverywhere } from "../lib/taskSync";
 import { getTaskEnhancementCopy } from "../lib/taskEnhancementCopy";
 import { TaskDatePicker } from "./TaskDatePicker";
-import { duplicateCardFromId, readAppClipboard, writeAppClipboard } from "../lib/appClipboard";
+import { duplicateCardFromId, formattedCardClipboardHtml, readAppClipboard, writeAppClipboard } from "../lib/appClipboard";
 import { createKanbanBoard, createKanbanList, placeCardOnKanban } from "../lib/kanban";
 import { getKanbanCopy } from "../lib/kanbanCopy";
 import { getContentEditCopy } from "../lib/contentEditCopy";
@@ -347,7 +347,7 @@ export function GlobalContextMenu() {
         {card.state !== "trash" && <button type="button" role="menuitem" data-menu-action="to-task" onClick={() => run(addCardAsTask)}><ListTodo size={15} />{contentTaskCopy.menuLabel}</button>}
         <button type="button" role="menuitem" onClick={() => run(() => db.cards.update(card.id, { favorite: !card.favorite, updatedAt: Date.now() }))}>{card.favorite ? <PinOff size={15} /> : <Pin size={15} />}{card.favorite ? t("context.unpinCard") : t("context.pinCard")}</button>
         <button type="button" role="menuitem" data-menu-action="duplicate" onClick={() => run(duplicateCard)}><FilePlus2 size={15} />{t("context.duplicate")}</button>
-        <button type="button" role="menuitem" onClick={() => run(() => writeAppClipboard({ kind: "card-ref", cardId: card.id }, `${card.title}\n\n${card.plainText}`))}><Copy size={15} />{t("context.copyCard")}</button>
+        <button type="button" role="menuitem" onClick={() => run(() => writeAppClipboard({ kind: "card-ref", cardId: card.id }, `${card.title}\n\n${card.plainText}`, formattedCardClipboardHtml(card)))}><Copy size={15} />{t("context.copyCard")}</button>
         <button type="button" role="menuitem" onClick={() => run(pasteAsCard)}><ClipboardPaste size={15} />{t("context.pasteCard")}</button>
         <i className="context-separator" />
         {card.state !== "trash" ? <>

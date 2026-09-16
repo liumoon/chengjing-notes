@@ -72,6 +72,37 @@ export interface ImportCopy {
   exportMarkdownDone: string;
   exportMarkdownFailed: string;
   exportZip: string;
+  mediaViewerTitle: string;
+  mediaViewerZoomIn: string;
+  mediaViewerZoomOut: string;
+  mediaViewerFit: string;
+  mediaViewerDownload: string;
+  mediaViewerClose: string;
+  mediaViewerOpen: string;
+  editorZoomIn: string;
+  editorZoomOut: string;
+  editorZoomReset: string;
+  readingWidthToggle: string;
+  markdownPreviewToggle: string;
+  markdownSourceToggle: string;
+  markdownPreviewHint: string;
+  markdownImageDownload: string;
+  markdownImageDownloading: string;
+  markdownImageBlocked: string;
+  markdownImageFailed: string;
+  markdownImageMissing: string;
+  pasteAsPlainText: string;
+  svgEdit: string;
+  svgEditTitle: string;
+  svgPreview: string;
+  svgSave: string;
+  svgSaved: string;
+  svgSaveFailed: string;
+  svgCopyText: string;
+  svgCopySource: string;
+  svgNoText: string;
+  svgCopied: string;
+  svgInvalid: string;
 }
 
 const zhTW: ImportCopy = {
@@ -97,6 +128,13 @@ const zhTW: ImportCopy = {
   errorNetwork: "網路連線失敗。", errorTimeout: "下載逾時。", errorUnsupportedType: "不支援的檔案類型。", warningCleanupFailed: "匯入失敗後有附件未能清理，請使用附件健康中心檢查。",
   sourceAttachment: "原始文件", inlineImage: "內嵌圖片", plainAttachment: "附件",
   exportMarkdown: "匯出 Markdown", exportMarkdownDone: "已匯出 {name}。", exportMarkdownFailed: "匯出 Markdown 失敗。", exportZip: "含圖片的 ZIP",
+  mediaViewerTitle: "圖片檢視", mediaViewerZoomIn: "放大", mediaViewerZoomOut: "縮小", mediaViewerFit: "符合視窗", mediaViewerDownload: "下載", mediaViewerClose: "關閉", mediaViewerOpen: "放大檢視",
+  editorZoomIn: "放大編輯區", editorZoomOut: "縮小編輯區", editorZoomReset: "重設縮放", readingWidthToggle: "閱讀寬度",
+  markdownPreviewToggle: "即時預覽", markdownSourceToggle: "原始碼", markdownPreviewHint: "游標所在的段落顯示 Markdown 原始碼，其餘直接呈現格式與圖片。",
+  markdownImageDownload: "下載圖片", markdownImageDownloading: "下載中…", markdownImageBlocked: "未下載（網路圖片）", markdownImageFailed: "下載失敗", markdownImageMissing: "附件遺失",
+  pasteAsPlainText: "貼成純文字",
+  svgEdit: "編輯 SVG", svgEditTitle: "編輯 SVG 原始碼", svgPreview: "預覽", svgSave: "儲存", svgSaved: "已儲存新的 SVG 版本。", svgSaveFailed: "SVG 驗證失敗，未覆蓋原檔。",
+  svgCopyText: "複製其中文字", svgCopySource: "複製原始碼", svgNoText: "這張 SVG 沒有可抽取的文字（可能已轉成路徑）。", svgCopied: "已複製到剪貼簿。", svgInvalid: "SVG 無法解析。",
 };
 
 const zhCN: ImportCopy = {
@@ -123,6 +161,13 @@ const zhCN: ImportCopy = {
   errorNetwork: "网络连接失败。", errorTimeout: "下载超时。", errorUnsupportedType: "不支持的文件类型。",
   sourceAttachment: "原始文档", inlineImage: "内嵌图片", plainAttachment: "附件",
   exportMarkdown: "导出 Markdown", exportMarkdownDone: "已导出 {name}。", exportMarkdownFailed: "导出 Markdown 失败。", exportZip: "含图片的 ZIP",
+  mediaViewerTitle: "图片查看", mediaViewerZoomIn: "放大", mediaViewerZoomOut: "缩小", mediaViewerFit: "适应窗口", mediaViewerDownload: "下载", mediaViewerClose: "关闭", mediaViewerOpen: "放大查看",
+  editorZoomIn: "放大编辑区", editorZoomOut: "缩小编辑区", editorZoomReset: "重置缩放", readingWidthToggle: "阅读宽度",
+  markdownPreviewToggle: "实时预览", markdownSourceToggle: "源代码", markdownPreviewHint: "光标所在的段落显示 Markdown 源代码，其余直接呈现格式与图片。",
+  markdownImageDownload: "下载图片", markdownImageDownloading: "下载中…", markdownImageBlocked: "未下载（网络图片）", markdownImageFailed: "下载失败", markdownImageMissing: "附件丢失",
+  pasteAsPlainText: "粘贴为纯文本",
+  svgEdit: "编辑 SVG", svgEditTitle: "编辑 SVG 源代码", svgPreview: "预览", svgSave: "保存", svgSaved: "已保存新的 SVG 版本。", svgSaveFailed: "SVG 验证失败，未覆盖原文件。",
+  svgCopyText: "复制其中文字", svgCopySource: "复制源代码", svgNoText: "这张 SVG 没有可抽取的文字（可能已转为路径）。", svgCopied: "已复制到剪贴板。", svgInvalid: "SVG 无法解析。",
 };
 
 const en: ImportCopy = {
@@ -148,6 +193,13 @@ const en: ImportCopy = {
   errorNetwork: "Network request failed.", errorTimeout: "Download timed out.", errorUnsupportedType: "Unsupported file type.", warningCleanupFailed: "Some attachments could not be cleaned up after the import failed. Check the attachment health center.",
   sourceAttachment: "Source document", inlineImage: "Inline image", plainAttachment: "Attachment",
   exportMarkdown: "Export Markdown", exportMarkdownDone: "Exported {name}.", exportMarkdownFailed: "Markdown export failed.", exportZip: "ZIP with images",
+  mediaViewerTitle: "Image viewer", mediaViewerZoomIn: "Zoom in", mediaViewerZoomOut: "Zoom out", mediaViewerFit: "Fit to window", mediaViewerDownload: "Download", mediaViewerClose: "Close", mediaViewerOpen: "View full size",
+  editorZoomIn: "Zoom editor in", editorZoomOut: "Zoom editor out", editorZoomReset: "Reset zoom", readingWidthToggle: "Reading width",
+  markdownPreviewToggle: "Live preview", markdownSourceToggle: "Source", markdownPreviewHint: "The block under your cursor shows Markdown source; everything else renders with formatting and images.",
+  markdownImageDownload: "Download image", markdownImageDownloading: "Downloading…", markdownImageBlocked: "Not downloaded (remote)", markdownImageFailed: "Download failed", markdownImageMissing: "Attachment missing",
+  pasteAsPlainText: "Paste as plain text",
+  svgEdit: "Edit SVG", svgEditTitle: "Edit SVG source", svgPreview: "Preview", svgSave: "Save", svgSaved: "Saved a new SVG version.", svgSaveFailed: "SVG validation failed. The original was not overwritten.",
+  svgCopyText: "Copy text", svgCopySource: "Copy source", svgNoText: "This SVG has no extractable text (it may be outlined paths).", svgCopied: "Copied to clipboard.", svgInvalid: "The SVG could not be parsed.",
 };
 
 const ja: ImportCopy = {
@@ -173,6 +225,13 @@ const ja: ImportCopy = {
   errorNetwork: "ネットワーク接続に失敗しました。", errorTimeout: "ダウンロードがタイムアウトしました。", errorUnsupportedType: "未対応のファイル形式です。", warningCleanupFailed: "取り込み失敗後に整理できない添付がありました。添付ファイルの状態センターを確認してください。",
   sourceAttachment: "原本ドキュメント", inlineImage: "インライン画像", plainAttachment: "添付ファイル",
   exportMarkdown: "Markdown を書き出す", exportMarkdownDone: "{name} を書き出しました。", exportMarkdownFailed: "Markdown の書き出しに失敗しました。", exportZip: "画像を含む ZIP",
+  mediaViewerTitle: "画像ビューア", mediaViewerZoomIn: "拡大", mediaViewerZoomOut: "縮小", mediaViewerFit: "画面に合わせる", mediaViewerDownload: "ダウンロード", mediaViewerClose: "閉じる", mediaViewerOpen: "拡大して表示",
+  editorZoomIn: "編集領域を拡大", editorZoomOut: "編集領域を縮小", editorZoomReset: "拡大縮小をリセット", readingWidthToggle: "表示幅",
+  markdownPreviewToggle: "ライブプレビュー", markdownSourceToggle: "ソース", markdownPreviewHint: "カーソルのあるブロックだけ Markdown のソースを表示し、他は書式と画像で表示します。",
+  markdownImageDownload: "画像をダウンロード", markdownImageDownloading: "ダウンロード中…", markdownImageBlocked: "未ダウンロード（外部画像）", markdownImageFailed: "ダウンロードに失敗", markdownImageMissing: "添付が見つかりません",
+  pasteAsPlainText: "プレーンテキストで貼り付け",
+  svgEdit: "SVG を編集", svgEditTitle: "SVG ソースを編集", svgPreview: "プレビュー", svgSave: "保存", svgSaved: "新しい SVG バージョンを保存しました。", svgSaveFailed: "SVG の検証に失敗し、原本は上書きしていません。",
+  svgCopyText: "テキストをコピー", svgCopySource: "ソースをコピー", svgNoText: "この SVG からはテキストを抽出できません（パス化されている可能性があります）。", svgCopied: "クリップボードにコピーしました。", svgInvalid: "SVG を解析できませんでした。",
 };
 
 const ko: ImportCopy = {
@@ -198,6 +257,13 @@ const ko: ImportCopy = {
   errorNetwork: "네트워크 연결에 실패했습니다.", errorTimeout: "다운로드 시간이 초과되었습니다.", errorUnsupportedType: "지원하지 않는 파일 형식입니다.", warningCleanupFailed: "가져오기 실패 후 일부 첨부를 정리하지 못했습니다. 첨부 파일 상태 센터를 확인하세요.",
   sourceAttachment: "원본 문서", inlineImage: "본문 이미지", plainAttachment: "첨부 파일",
   exportMarkdown: "Markdown 내보내기", exportMarkdownDone: "{name}을(를) 내보냈습니다.", exportMarkdownFailed: "Markdown 내보내기에 실패했습니다.", exportZip: "이미지가 포함된 ZIP",
+  mediaViewerTitle: "이미지 보기", mediaViewerZoomIn: "확대", mediaViewerZoomOut: "축소", mediaViewerFit: "화면에 맞추기", mediaViewerDownload: "다운로드", mediaViewerClose: "닫기", mediaViewerOpen: "크게 보기",
+  editorZoomIn: "편집 영역 확대", editorZoomOut: "편집 영역 축소", editorZoomReset: "확대 축소 초기화", readingWidthToggle: "읽기 너비",
+  markdownPreviewToggle: "실시간 미리보기", markdownSourceToggle: "원문", markdownPreviewHint: "커서가 있는 블록만 Markdown 원문을 보이고 나머지는 서식과 이미지로 표시합니다.",
+  markdownImageDownload: "이미지 다운로드", markdownImageDownloading: "다운로드 중…", markdownImageBlocked: "미다운로드(외부 이미지)", markdownImageFailed: "다운로드 실패", markdownImageMissing: "첨부 파일 없음",
+  pasteAsPlainText: "텍스트로 붙여넣기",
+  svgEdit: "SVG 편집", svgEditTitle: "SVG 원문 편집", svgPreview: "미리보기", svgSave: "저장", svgSaved: "새 SVG 버전을 저장했습니다.", svgSaveFailed: "SVG 검증에 실패하여 원본을 덮어쓰지 않았습니다.",
+  svgCopyText: "텍스트 복사", svgCopySource: "원문 복사", svgNoText: "이 SVG에서는 추출할 텍스트가 없습니다(패스로 변환되었을 수 있습니다).", svgCopied: "클립보드에 복사했습니다.", svgInvalid: "SVG를 분석할 수 없습니다.",
 };
 
 const dictionaries: Record<AppLanguage, ImportCopy> = { "zh-TW": zhTW, "zh-CN": zhCN, en, ja, ko };

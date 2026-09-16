@@ -110,16 +110,24 @@ export function resetMarkdownBridge() {
   bridgeFailed = false;
 }
 
+/**
+ * 序列化也走游離文件：Chromium 連游離節點裡的圖片都會發起載入，
+ * 用本機 document 會讓內文的 `attachment://` 參考真的去連線而噴 CSP 錯誤。
+ */
 function serializeFragment(active: Bridge, doc: ProseMirrorNode) {
-  const host = document.createElement("div");
-  host.appendChild(active.serializer.serializeFragment(doc.content));
+  const scratch = new DOMParser().parseFromString("", "text/html");
+  const host = scratch.createElement("div");
+  host.appendChild(active.serializer.serializeFragment(doc.content, { document: scratch }));
   return host.innerHTML || "<p></p>";
 }
 
+/**
+ * 解析用的暫存容器一律走 DOMParser：Chromium 對游離節點仍會發起圖片載入，
+ * 用 innerHTML 會讓內部的 `attachment://` 參考真的去連線而噴 CSP 錯誤。
+ */
 function parseHtmlFragment(active: Bridge, html: string) {
-  const host = document.createElement("div");
-  host.innerHTML = html || "<p></p>";
-  return active.parser.parse(host, { preserveWhitespace: "full" });
+  const parsed = new DOMParser().parseFromString(html || "<p></p>", "text/html");
+  return active.parser.parse(parsed.body, { preserveWhitespace: "full" });
 }
 
 export async function markdownToDocument(markdown: string): Promise<MarkdownBridgeResult<JSONContent>> {
@@ -244,8 +252,8 @@ function nodeFromElement(element: Element): JSONContent {
 }
 
 function nodesFromElement(html: string): JSONContent[] {
-  const host = document.createElement("div");
-  host.innerHTML = html;
+  // 同上：用 DOMParser 建立游離文件，避免暫存容器觸發圖片載入。
+  const host = new DOMParser().parseFromString(html || "", "text/html").body;
   return [...host.children].map((child) => {
     const tag = child.tagName.toLowerCase();
     if (tag === "ul" && child.querySelector(":scope > li > input[type=checkbox]")) {

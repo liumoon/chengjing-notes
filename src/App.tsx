@@ -10,6 +10,7 @@ import { Workspace, preloadWorkspaceView } from "./components/Workspace";
 import { androidCall } from "./platform/android";
 import { CommandPalette } from "./components/CommandPalette";
 import { GlobalContextMenu } from "./components/GlobalContextMenu";
+import { MediaViewer } from "./components/MediaViewer";
 import { UpdateManager } from "./components/UpdateManager";
 import { AutoBackupManager } from "./components/AutoBackupManager";
 import { CommunityNotificationManager } from "./components/CommunityNotificationManager";
@@ -80,6 +81,8 @@ export function App() {
   const theme = useAppStore((state) => state.theme);
   const language = useAppStore((state) => state.language);
   const fontScale = useAppStore((state) => state.fontScale);
+  const editorZoom = useAppStore((state) => state.editorZoom);
+  const readingWidth = useAppStore((state) => state.readingWidth);
   const rightPanel = useAppStore((state) => state.rightPanel);
   const view = useAppStore((state) => state.view);
   const selectedCardId = useAppStore((state) => state.selectedCardId);
@@ -142,6 +145,16 @@ export function App() {
     document.documentElement.style.setProperty("--font-scale", String(fontScale));
     document.documentElement.dataset.fontScale = String(Math.round(fontScale * 100));
   }, [fontScale]);
+
+  // 編輯區縮放與閱讀寬度都是顯示層偏好：記在本機，不進卡片內容。
+  useEffect(() => {
+    document.documentElement.style.setProperty("--editor-zoom", String(editorZoom));
+    document.documentElement.dataset.editorZoom = String(Math.round(editorZoom * 100));
+  }, [editorZoom]);
+
+  useEffect(() => {
+    document.documentElement.dataset.readingWidth = String(readingWidth);
+  }, [readingWidth]);
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -256,6 +269,7 @@ export function App() {
       {createCardLoaded && <Suspense fallback={null}><CreateCardModal /></Suspense>}
       {importLoaded && <Suspense fallback={null}><ImportModal /></Suspense>}
       <GlobalContextMenu />
+      <MediaViewer />
       <UpdateManager />
       <AutoBackupManager />
       <SyncManager />

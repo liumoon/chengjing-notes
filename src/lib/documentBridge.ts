@@ -95,3 +95,28 @@ export async function downloadRemoteAssets(urls: string[]): Promise<DownloadedRe
     return [...safe.map((url) => ({ url, ok: false, error: error instanceof Error ? error.message : "download-failed" })), ...rejected.values()];
   }
 }
+
+/** 下載結果的 `data` 是純 base64；換回 Blob 才能存成附件。 */
+export function remoteAssetBlob(asset: DownloadedRemoteAsset): Blob | null {
+  if (!asset?.ok || typeof asset.data !== "string" || !asset.data) return null;
+  try {
+    if (typeof atob !== "function") return null;
+    const binary = atob(asset.data);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return new Blob([bytes], { type: asset.mime || "application/octet-stream" });
+  } catch {
+    return null;
+  }
+}
+
+/** 從網址取一個安全的檔名，供附件與 alt 文字使用。 */
+export function remoteAssetName(url: string) {
+  try {
+    const parsed = new URL(url);
+    const last = parsed.pathname.split("/").filter(Boolean).pop() || "remote-image";
+    return decodeURIComponent(last).slice(0, 120) || "remote-image";
+  } catch {
+    return "remote-image";
+  }
+}
