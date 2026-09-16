@@ -40,6 +40,7 @@ const diagnosticCopy = {
     apiPath: "服務已回應，但 API 路徑不正確。請確認網址是否包含正確的 /v1。",
     http: (status: number) => `服務回應 HTTP ${status}，請檢查金鑰、權限或服務設定。`,
     model: (model: string) => `服務可連線，但找不到模型「${model}」。請確認模型 ID 已安裝或可用。`,
+    certificate: "伺服器憑證未通過信任驗證（可能是自簽憑證）。澄境不會自行放行；請核對下方指紋後再手動信任。",
   },
   "zh-CN": {
     title: "连接诊断",
@@ -49,6 +50,7 @@ const diagnosticCopy = {
     apiPath: "服务已响应，但 API 路径不正确。请确认地址是否包含正确的 /v1。",
     http: (status: number) => `服务返回 HTTP ${status}，请检查密钥、权限或服务设置。`,
     model: (model: string) => `服务可连接，但找不到模型“${model}”。请确认模型 ID 已安装或可用。`,
+    certificate: "服务器证书未通过信任验证（可能是自签名证书）。澄境不会自行放行；请核对下方指纹后再手动信任。",
   },
   en: {
     title: "Connection diagnostics",
@@ -58,6 +60,7 @@ const diagnosticCopy = {
     apiPath: "The service responded, but the API path is incorrect. Confirm that the URL includes the correct /v1 path.",
     http: (status: number) => `The service returned HTTP ${status}. Check the API key, permissions, or service settings.`,
     model: (model: string) => `The service is reachable, but model “${model}” was not found. Confirm that the model ID is installed or available.`,
+    certificate: "The server certificate failed trust validation (it may be self-signed). ChengJing never bypasses TLS on its own; verify the fingerprint below before trusting it.",
   },
   ja: {
     title: "接続診断",
@@ -67,6 +70,7 @@ const diagnosticCopy = {
     apiPath: "サービスは応答しましたが、APIパスが正しくありません。URLに正しい /v1 が含まれるか確認してください。",
     http: (status: number) => `サービスがHTTP ${status}を返しました。キー、権限、サービス設定を確認してください。`,
     model: (model: string) => `サービスには接続できますが、モデル「${model}」が見つかりません。モデルIDを確認してください。`,
+    certificate: "サーバー証明書の信頼検証に失敗しました（自己署名の可能性があります）。澄境が独自に回避することはありません。下の指紋を確認してから信頼してください。",
   },
   ko: {
     title: "연결 진단",
@@ -76,6 +80,7 @@ const diagnosticCopy = {
     apiPath: "서비스는 응답했지만 API 경로가 올바르지 않습니다. URL에 올바른 /v1이 포함되었는지 확인하세요.",
     http: (status: number) => `서비스가 HTTP ${status}를 반환했습니다. 키, 권한 또는 서비스 설정을 확인하세요.`,
     model: (model: string) => `서비스에는 연결되지만 모델 '${model}'을 찾을 수 없습니다. 모델 ID를 확인하세요.`,
+    certificate: "서버 인증서 신뢰 검증에 실패했습니다(자체 서명일 수 있습니다). ChengJing이 임의로 우회하지 않습니다. 아래 지문을 확인한 뒤 신뢰하세요.",
   },
 } as const;
 
@@ -92,3 +97,91 @@ const apiModeCopy = {
 } as const;
 
 export function getProviderApiModeCopy(language: AppLanguage) { return apiModeCopy[language] || apiModeCopy.en; }
+
+const certTrustCopy = {
+  "zh-TW": {
+    title: "信任這個伺服器憑證",
+    warning: "系統不信任這個憑證，通常是自簽憑證。只有在你確認這是自己的 LiteLLM 或內部伺服器時才信任。",
+    fingerprint: "憑證指紋（SHA-256）",
+    subject: "核發對象",
+    issuer: "簽發者",
+    validTo: "有效期限",
+    trust: "信任此憑證並重試",
+    trusting: "正在信任…",
+    trusted: "已信任這個憑證，僅限這個主機；換憑證或換主機就會失效。",
+    badge: "已信任自簽憑證",
+    revoke: "撤銷憑證信任",
+    unavailable: "讀取憑證失敗，請確認服務已啟動後再測一次。",
+    mismatch: "指紋與伺服器目前出示的憑證不同，請重新核對。",
+  },
+  "zh-CN": {
+    title: "信任这个服务器证书",
+    warning: "系统不信任这个证书，通常是自签名证书。只有在你确认这是自己的 LiteLLM 或内部服务器时才信任。",
+    fingerprint: "证书指纹（SHA-256）",
+    subject: "颁发对象",
+    issuer: "签发者",
+    validTo: "有效期至",
+    trust: "信任此证书并重试",
+    trusting: "正在信任…",
+    trusted: "已信任这个证书，仅限这台主机；更换证书或主机后失效。",
+    badge: "已信任自签名证书",
+    revoke: "撤销证书信任",
+    unavailable: "读取证书失败，请确认服务已启动后重试。",
+    mismatch: "指纹与服务器当前出示的证书不同，请重新核对。",
+  },
+  en: {
+    title: "Trust this server certificate",
+    warning: "Your system does not trust this certificate, usually because it is self-signed. Trust it only if you confirm this is your own LiteLLM or internal server.",
+    fingerprint: "Certificate fingerprint (SHA-256)",
+    subject: "Issued to",
+    issuer: "Issuer",
+    validTo: "Valid until",
+    trust: "Trust certificate and retry",
+    trusting: "Trusting…",
+    trusted: "Certificate trusted for this host only. It stops working if the certificate or host changes.",
+    badge: "Self-signed certificate trusted",
+    revoke: "Revoke certificate trust",
+    unavailable: "Could not read the certificate. Confirm the service is running and test again.",
+    mismatch: "The fingerprint differs from the certificate the server is presenting now. Please re-verify.",
+  },
+  ja: {
+    title: "このサーバー証明書を信頼する",
+    warning: "この証明書はシステムに信頼されていません。自己署名の可能性があります。自分のLiteLLMや社内サーバーだと確認できた場合のみ信頼してください。",
+    fingerprint: "証明書指紋（SHA-256）",
+    subject: "対象",
+    issuer: "発行者",
+    validTo: "有効期限",
+    trust: "証明書を信頼して再試行",
+    trusting: "信頼設定中…",
+    trusted: "このホストに限り証明書を信頼しました。証明書またはホストが変わると無効になります。",
+    badge: "自己署名証明書を信頼中",
+    revoke: "証明書の信頼を取り消す",
+    unavailable: "証明書を読み取れませんでした。サービスが起動しているか確認して再テストしてください。",
+    mismatch: "指紋がサーバーが現在提示している証明書と異なります。もう一度確認してください。",
+  },
+  ko: {
+    title: "이 서버 인증서 신뢰",
+    warning: "이 인증서는 시스템에서 신뢰하지 않습니다(자체 서명일 수 있습니다). 자신의 LiteLLM 또는 내부 서버임을 확인한 경우에만 신뢰하세요.",
+    fingerprint: "인증서 지문(SHA-256)",
+    subject: "발급 대상",
+    issuer: "발급자",
+    validTo: "만료일",
+    trust: "인증서 신뢰 후 재시도",
+    trusting: "신뢰 설정 중…",
+    trusted: "이 호스트에 대해서만 인증서를 신뢰했습니다. 인증서 또는 호스트가 바뀌면 해제됩니다.",
+    badge: "자체 서명 인증서 신뢰 중",
+    revoke: "인증서 신뢰 해제",
+    unavailable: "인증서를 읽을 수 없습니다. 서비스가 실행 중인지 확인한 뒤 다시 테스트하세요.",
+    mismatch: "지문이 서버가 현재 제시하는 인증서와 다릅니다. 다시 확인해 주세요.",
+  },
+} as const;
+
+export function getProviderCertTrustCopy(language: AppLanguage) {
+  return certTrustCopy[language] || certTrustCopy.en;
+}
+
+/** 將 64 字元 SHA-256 hex 整理成 AA:BB:CC… 給使用者核對；不合法時回傳空字串。 */
+export function formatCertFingerprint(value?: string): string {
+  const hex = String(value ?? "").toUpperCase().replace(/[^0-9A-F]/g, "");
+  return hex.length === 64 ? hex.match(/.{2}/g)!.join(":") : "";
+}

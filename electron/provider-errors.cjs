@@ -1,9 +1,11 @@
+const { isTlsFailure } = require("./cert-trust.cjs");
+
 const messages = {
-  "zh-TW": { auth: "AI Provider 拒絕授權，請確認金鑰與使用權限。", missing: "AI Provider 找不到這個模型或 API 路徑。", rate: "AI Provider 已達額度或請求速率限制，請稍後再試。", server: "AI Provider 服務發生錯誤，請稍後再試。", rejected: "AI Provider 已收到請求，但不接受其中的設定。" },
-  "zh-CN": { auth: "AI Provider 拒绝授权，请检查密钥与权限。", missing: "AI Provider 找不到该模型或 API 路径。", rate: "AI Provider 已达额度或请求频率限制，请稍后重试。", server: "AI Provider 服务发生错误，请稍后重试。", rejected: "AI Provider 已收到请求，但不接受其中的设置。" },
-  en: { auth: "The AI provider denied authorization. Check your key and permissions.", missing: "The AI provider could not find this model or API path.", rate: "The AI provider reached a quota or rate limit. Try again later.", server: "The AI provider encountered a server error. Try again later.", rejected: "The AI provider received the request but rejected its settings." },
-  ja: { auth: "AI Providerが認証を拒否しました。キーと権限を確認してください。", missing: "モデルまたはAPIパスが見つかりません。", rate: "AI Providerの利用枠または回数制限に達しました。後でもう一度お試しください。", server: "AI Providerでサーバーエラーが発生しました。", rejected: "AI Providerがリクエストの設定を受け付けませんでした。" },
-  ko: { auth: "AI Provider가 인증을 거부했습니다. 키와 권한을 확인하세요.", missing: "AI Provider가 모델 또는 API 경로를 찾지 못했습니다.", rate: "AI Provider의 할당량 또는 요청 제한에 도달했습니다. 나중에 다시 시도하세요.", server: "AI Provider에 서버 오류가 발생했습니다.", rejected: "AI Provider가 요청을 받았지만 설정을 거부했습니다." },
+  "zh-TW": { auth: "AI Provider 拒絕授權，請確認金鑰與使用權限。", missing: "AI Provider 找不到這個模型或 API 路徑。", rate: "AI Provider 已達額度或請求速率限制，請稍後再試。", server: "AI Provider 服務發生錯誤，請稍後再試。", rejected: "AI Provider 已收到請求，但不接受其中的設定。", certificate: "伺服器憑證不受信任（可能是自簽憑證）。請核對憑證指紋後手動信任，或改用受信任的憑證。" },
+  "zh-CN": { auth: "AI Provider 拒绝授权，请检查密钥与权限。", missing: "AI Provider 找不到该模型或 API 路径。", rate: "AI Provider 已达额度或请求频率限制，请稍后重试。", server: "AI Provider 服务发生错误，请稍后重试。", rejected: "AI Provider 已收到请求，但不接受其中的设置。", certificate: "服务器证书不受信任（可能是自签名证书）。请核对证书指纹后手动信任，或改用受信任的证书。" },
+  en: { auth: "The AI provider denied authorization. Check your key and permissions.", missing: "The AI provider could not find this model or API path.", rate: "The AI provider reached a quota or rate limit. Try again later.", server: "The AI provider encountered a server error. Try again later.", rejected: "The AI provider received the request but rejected its settings.", certificate: "The server certificate is not trusted (it may be self-signed). Verify the fingerprint and trust it explicitly, or use a trusted certificate." },
+  ja: { auth: "AI Providerが認証を拒否しました。キーと権限を確認してください。", missing: "モデルまたはAPIパスが見つかりません。", rate: "AI Providerの利用枠または回数制限に達しました。後でもう一度お試しください。", server: "AI Providerでサーバーエラーが発生しました。", rejected: "AI Providerがリクエストの設定を受け付けませんでした。", certificate: "サーバー証明書が信頼できません（自己署名の可能性があります）。指紋を確認して明示的に信頼するか、信頼できる証明書をご利用ください。" },
+  ko: { auth: "AI Provider가 인증을 거부했습니다. 키와 권한을 확인하세요.", missing: "AI Provider가 모델 또는 API 경로를 찾지 못했습니다.", rate: "AI Provider의 할당량 또는 요청 제한에 도달했습니다. 나중에 다시 시도하세요.", server: "AI Provider에 서버 오류가 발생했습니다.", rejected: "AI Provider가 요청을 받았지만 설정을 거부했습니다.", certificate: "서버 인증서가 신뢰되지 않습니다(자체 서명일 수 있습니다). 지문을 확인한 뒤 명시적으로 신뢰하거나 신뢰되는 인증서를 사용하세요." },
 };
 function providerHttpError(code, language) {
   const match = /^provider-http-(\d+)(?::(.*))?$/s.exec(code);
@@ -19,6 +21,7 @@ function providerDiagnosticError(code, language) {
   if (code === "provider-model-not-found") return copy.missing;
   if (code === "provider-model-required") return copy.missing;
   if (code === "provider-base-url-invalid" || code === "provider-insecure-remote-url") return copy.rejected;
+  if (isTlsFailure(code)) return copy.certificate;
   if (/^(provider-|fetch failed|net::)/i.test(code)) return copy.server;
   return null;
 }

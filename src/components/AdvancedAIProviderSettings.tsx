@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, Check, ChevronDown, CloudCog, Eye, EyeOff, KeyRound, Plus, RefreshCw, Server, ShieldCheck, Trash2 } from "lucide-react";
+import { Activity, Check, ChevronDown, CloudCog, Eye, EyeOff, Fingerprint, KeyRound, Plus, RefreshCw, Server, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
 import { useI18n } from "../hooks/useI18n";
-import { getAdvancedProviderCopy, getProviderApiModeCopy, getProviderDiagnosticCopy } from "../lib/advancedProviderCopy";
+import { formatCertFingerprint, getAdvancedProviderCopy, getProviderApiModeCopy, getProviderCertTrustCopy, getProviderDiagnosticCopy } from "../lib/advancedProviderCopy";
 import { useAppStore } from "../store";
 import type { AIProviderApiMode, AIProviderDiagnostics, AIProviderModel, AIProviderProfile, AIProviderSettings, AIProviderType } from "../types";
 import { friendlyErrorMessage } from "../lib/utils";
@@ -14,6 +14,7 @@ export function AdvancedAIProviderSettings() {
   const copy = useMemo(() => getAdvancedProviderCopy(language), [language]);
   const modeCopy = useMemo(() => getProviderApiModeCopy(language), [language]);
   const diagnosticCopy = useMemo(() => getProviderDiagnosticCopy(language), [language]);
+  const trustCopy = useMemo(() => getProviderCertTrustCopy(language), [language]);
   const healthCopy = getHealthCopy(language);
   const engine = useAppStore((state) => state.aiEngine);
   const setEngine = useAppStore((state) => state.setAIEngine);
@@ -26,6 +27,9 @@ export function AdvancedAIProviderSettings() {
   const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:11434/v1");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [certFingerprint, setCertFingerprint] = useState("");
+  const [certPem, setCertPem] = useState("");
+  const [trusting, setTrusting] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [models, setModels] = useState<AIProviderModel[]>([]);
   const [busy, setBusy] = useState<"save" | "test" | "models" | "generate" | "">("");
@@ -34,7 +38,7 @@ export function AdvancedAIProviderSettings() {
   const [expanded, setExpanded] = useState(false);
   const activeProfile = settings.profiles.find((profile) => profile.id === settings.selectedProfileId);
   const editingProfile = settings.profiles.find((profile) => profile.id === editingId);
-  const unsaved = Boolean(editingProfile && (editingProfile.type !== type || editingProfile.apiMode !== apiMode || editingProfile.baseUrl !== baseUrl.trim().replace(/\/$/, "") || editingProfile.model !== model.trim() || apiKey.trim()));
+  const unsaved = Boolean(editingProfile && (editingProfile.type !== type || editingProfile.apiMode !== apiMode || editingProfile.baseUrl !== baseUrl.trim().replace(/\/$/, "") || editingProfile.model !== model.trim() || apiKey.trim() || (editingProfile.certFingerprint || "") !== certFingerprint.trim()));
 
   function activate(profile: AIProviderProfile) {
     setCustomProvider({ id: profile.id, name: profile.name, model: profile.model });
@@ -42,11 +46,11 @@ export function AdvancedAIProviderSettings() {
   }
 
   function loadProfile(profile: AIProviderProfile) {
-    setEditingId(profile.id); setType(profile.type); setApiMode(profile.apiMode); setName(profile.name); setBaseUrl(profile.baseUrl); setModel(profile.model); setApiKey(""); setModels([]); setNotice(""); setDiagnostics(null);
+    setEditingId(profile.id); setType(profile.type); setApiMode(profile.apiMode); setName(profile.name); setBaseUrl(profile.baseUrl); setModel(profile.model); setApiKey(""); setCertFingerprint(profile.certFingerprint || ""); setCertPem(profile.certPem || ""); setModels([]); setNotice(""); setDiagnostics(null);
   }
 
   function resetForm(nextType: AIProviderType = "ollama") {
-    setEditingId(""); setType(nextType); setApiMode("chat-completions"); setName(nextType === "ollama" ? "Ollama" : "Custom Gateway"); setBaseUrl(nextType === "ollama" ? "http://127.0.0.1:11434/v1" : "https://"); setModel(""); setApiKey(""); setModels([]); setNotice(""); setDiagnostics(null);
+    setEditingId(""); setType(nextType); setApiMode("chat-completions"); setName(nextType === "ollama" ? "Ollama" : "Custom Gateway"); setBaseUrl(nextType === "ollama" ? "http://127.0.0.1:11434/v1" : "https://"); setModel(""); setApiKey(""); setCertFingerprint(""); setCertPem(""); setModels([]); setNotice(""); setDiagnostics(null);
   }
 
   useEffect(() => {
@@ -70,7 +74,7 @@ export function AdvancedAIProviderSettings() {
     if (!window.chengjing) { setNotice(copy.desktop); return; }
     setBusy("save"); setNotice("");
     try {
-      const value = await window.chengjing.ai.upsertProvider({ id: editingId || undefined, name, type, apiMode, baseUrl, model, ...(apiKey.trim() ? { apiKey } : {}), select: true });
+      const value = await window.chengjing.ai.upsertProvider({ id: editingId || undefined, name, type, apiMode, baseUrl, model, ...(apiKey.trim() ? { apiKey } : {}), certFingerprint: certFingerprint.trim(), certPem: certPem.trim(), select: true });
       setSettings(value);
       const selected = value.profiles.find((profile) => profile.id === value.selectedProfileId)!;
       loadProfile(selected); activate(selected); setNotice(copy.saved);
@@ -98,6 +102,33 @@ export function AdvancedAIProviderSettings() {
     }
     catch (error) { setNotice(friendlyErrorMessage(error, copy.desktop)); }
     finally { setBusy(""); }
+  }
+
+  // 使用者核對指紋後才寫入信任；寫入立刻重測，讓 TLS 放行生效。
+  async function trustCertificate() {
+    const fingerprint = formatCertFingerprint(diagnostics?.certFingerprint || certFingerprint);
+    const certPem = String(diagnostics?.certPem || "");
+    if (!window.chengjing || !editingId || !fingerprint || !certPem || trusting) return;
+    setTrusting(true); setNotice("");
+    try {
+      const value = await window.chengjing.ai.upsertProvider({ id: editingId, name, type, apiMode, baseUrl, model, certFingerprint: fingerprint, certPem, select: settings.selectedProfileId === editingId });
+      setSettings(value);
+      setCertFingerprint(fingerprint); setCertPem(certPem);
+      const result = await window.chengjing.ai.testProvider(editingId);
+      setModels(result.models); setDiagnostics(result.diagnostics || null);
+      setNotice(result.ok ? copy.connected(result.models.length) : trustCopy.trusted);
+    } catch (error) { setNotice(friendlyErrorMessage(error, copy.desktop)); }
+    finally { setTrusting(false); }
+  }
+
+  async function revokeTrust() {
+    if (!window.chengjing || !editingProfile || trusting) return;
+    setTrusting(true); setNotice("");
+    try {
+      const value = await window.chengjing.ai.upsertProvider({ id: editingProfile.id, name, type, apiMode, baseUrl, model, certFingerprint: "", select: settings.selectedProfileId === editingProfile.id });
+      setSettings(value); setCertFingerprint(""); setCertPem(""); setNotice(trustCopy.revoke);
+    } catch (error) { setNotice(friendlyErrorMessage(error, copy.desktop)); }
+    finally { setTrusting(false); }
   }
 
   async function fetchModels() {
@@ -134,7 +165,7 @@ export function AdvancedAIProviderSettings() {
     if (!window.chengjing || !editingProfile) return;
     setBusy("save");
     try {
-      const value = await window.chengjing.ai.upsertProvider({ id: editingProfile.id, name, type, apiMode, baseUrl, model, apiKey: "", select: settings.selectedProfileId === editingProfile.id });
+      const value = await window.chengjing.ai.upsertProvider({ id: editingProfile.id, name, type, apiMode, baseUrl, model, apiKey: "", certFingerprint, certPem, select: settings.selectedProfileId === editingProfile.id });
       setSettings(value); setNotice(copy.saved);
     } catch (error) { setNotice(friendlyErrorMessage(error, copy.desktop)); }
     finally { setBusy(""); }
@@ -152,7 +183,7 @@ export function AdvancedAIProviderSettings() {
         {settings.profiles.length > 0 && <div className="provider-profile-list">{settings.profiles.map((profile) => {
           const active = profile.id === settings.selectedProfileId && engine === "custom-provider";
           return <article key={profile.id} className={active ? "is-active" : ""}>
-            <button type="button" className="provider-profile-main" onClick={() => loadProfile(profile)}><span><b>{profile.name}</b><small>{profile.model}</small></span><code>{profile.type === "ollama" ? "Ollama" : "Gateway"} · {profile.apiMode === "responses" ? "Responses" : "Chat"}</code></button>
+            <button type="button" className="provider-profile-main" onClick={() => loadProfile(profile)}><span><b>{profile.name}</b><small>{profile.model}</small>{profile.certFingerprint && <em className="provider-cert-badge"><ShieldCheck size={11} />{trustCopy.badge}</em>}</span><code>{profile.type === "ollama" ? "Ollama" : "Gateway"} · {profile.apiMode === "responses" ? "Responses" : "Chat"}</code></button>
             <button type="button" className={active ? "provider-use is-active" : "provider-use"} onClick={() => void chooseProfile(profile)}>{active ? <><Check size={13} />{copy.active}</> : copy.select}</button>
             <button type="button" className="provider-remove" aria-label={copy.remove} onClick={() => void removeConnection(profile)}><Trash2 size={14} /></button>
           </article>;
@@ -178,9 +209,22 @@ export function AdvancedAIProviderSettings() {
           <label className="provider-wide-field"><span>{copy.apiKey}</span><div><KeyRound size={14} /><input type={showKey ? "text" : "password"} value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={editingProfile?.keyConfigured ? copy.keySaved : copy.keyOptional} /><button type="button" aria-label={showKey ? "Hide" : "Show"} onClick={() => setShowKey(!showKey)}>{showKey ? <EyeOff size={15} /> : <Eye size={15} />}</button></div></label>
           {notice && <p className="provider-notice" role="status">{notice}</p>}
           {diagnostics && <p className={`provider-diagnostic is-${diagnostics.stage}`} role="status"><b>{diagnosticCopy.title}</b><span>{diagnostics.stage === "ok" ? diagnosticCopy.healthy(diagnostics.model || model) : diagnostics.stage === "url" ? diagnosticCopy.url : diagnostics.stage === "connection" ? diagnosticCopy.connection : diagnostics.stage === "api-path" ? diagnosticCopy.apiPath : diagnostics.stage === "http" ? diagnosticCopy.http(diagnostics.status || 0) : diagnosticCopy.model(diagnostics.model || model)}</span></p>}
+          {diagnostics?.stage === "certificate" && <div className="provider-cert-trust">
+            <header><ShieldAlert size={15} /><b>{trustCopy.title}</b></header>
+            <p>{trustCopy.warning}</p>
+            {diagnostics.certFingerprint ? <>
+              <dl>
+                <div><dt>{trustCopy.fingerprint}</dt><dd><code>{formatCertFingerprint(diagnostics.certFingerprint)}</code></dd></div>
+                {diagnostics.certSubject && <div><dt>{trustCopy.subject}</dt><dd>{diagnostics.certSubject}</dd></div>}
+                {diagnostics.certIssuer && <div><dt>{trustCopy.issuer}</dt><dd>{diagnostics.certIssuer}</dd></div>}
+                {diagnostics.certValidTo && <div><dt>{trustCopy.validTo}</dt><dd>{diagnostics.certValidTo}</dd></div>}
+              </dl>
+              <button type="button" className="secondary-button" disabled={Boolean(busy) || trusting} onClick={() => void trustCertificate()}><Fingerprint size={14} className={trusting ? "spin" : ""} />{trusting ? trustCopy.trusting : trustCopy.trust}</button>
+            </> : <p className="provider-cert-unavailable">{trustCopy.unavailable}</p>}
+          </div>}
           {editingId && <div className="provider-generation-check"><span>{unsaved ? healthCopy.saveFirst : healthCopy.generationHint}</span><button type="button" className="secondary-button" disabled={Boolean(busy) || unsaved} onClick={() => void testGeneration()}><Activity size={14} className={busy === "generate" ? "spin" : ""} />{busy === "generate" ? healthCopy.generating : healthCopy.generation}</button></div>}
           <footer>
-            <span>{editingProfile?.keyConfigured && <button type="button" className="provider-clear-key" onClick={() => void removeKey()}>{copy.clearKey}</button>}</span>
+            <span>{editingProfile?.keyConfigured && <button type="button" className="provider-clear-key" onClick={() => void removeKey()}>{copy.clearKey}</button>}{editingProfile?.certFingerprint && <button type="button" className="provider-clear-key" onClick={() => void revokeTrust()}>{trustCopy.revoke}</button>}</span>
             {editingId && <button type="button" className="secondary-button" disabled={Boolean(busy) || unsaved} onClick={() => void fetchModels()}><RefreshCw size={14} className={busy === "models" ? "spin" : ""} />{copy.models}</button>}
             {editingId && <button type="button" className="secondary-button" disabled={Boolean(busy) || unsaved} onClick={() => void testConnection()}><Activity size={14} className={busy === "test" ? "spin" : ""} />{busy === "test" ? copy.testing : copy.test}</button>}
             <button type="submit" className="primary-button" disabled={Boolean(busy)}>{busy === "save" ? copy.saving : copy.save}</button>

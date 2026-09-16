@@ -1,4 +1,5 @@
 const { normalizeBaseUrl } = require("./provider-settings.cjs");
+const { describeError, isTlsFailure } = require("./cert-trust.cjs");
 
 const REQUEST_TIMEOUT_MS = 180_000;
 const DISCOVERY_TIMEOUT_MS = 20_000;
@@ -144,10 +145,10 @@ async function testProvider(fetchImpl, profile) {
         : { stage: "model", code: "provider-model-not-found", endpoint: modelsEndpoint, model },
     };
   } catch (error) {
-    const code = String(error?.message || "provider-unavailable");
+    const code = describeError(error) || "provider-unavailable";
     const statusMatch = /^provider-http-(\d+)/.exec(code);
     const status = statusMatch ? Number(statusMatch[1]) : undefined;
-    const stage = status === 404 ? "api-path" : status ? "http" : code === "provider-timeout" ? "connection" : "connection";
+    const stage = status === 404 ? "api-path" : status ? "http" : isTlsFailure(code) ? "certificate" : "connection";
     return {
       ok: false,
       models: [],

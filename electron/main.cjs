@@ -1,4 +1,4 @@
-const { app, BrowserWindow, clipboard, ClipboardItem, dialog, globalShortcut, ipcMain, Menu, nativeImage, net, protocol, safeStorage, screen, shell, Tray } = require("electron");
+const { app, BrowserWindow, clipboard, ClipboardItem, dialog, globalShortcut, ipcMain, Menu, nativeImage, net, protocol, safeStorage, screen, session, shell, Tray } = require("electron");
 const { createHash, randomUUID } = require("node:crypto");
 const { spawn } = require("node:child_process");
 const { createReadStream } = require("node:fs");
@@ -57,6 +57,7 @@ let trayImageDetails = { empty: true, width: 0, height: 0, path: "" };
 function mcpSettingsApi() { return require("./mcp-settings.cjs"); }
 function providerSettingsApi() { return require("./provider-settings.cjs"); }
 function providerClientApi() { return require("./provider-client.cjs"); }
+function certTrustApi() { return require("./cert-trust.cjs"); }
 
 function languageFromPreferences(preferredLanguages = []) {
   const primary = String(preferredLanguages[0] || "").trim().toLowerCase().replaceAll("_", "-");
@@ -308,7 +309,7 @@ const PROVIDER_MESSAGES = {
 };
 
 function friendlyProviderError(error) {
-  const code = String(error?.message || "");
+  const code = certTrustApi().describeError(error);
   const copy = PROVIDER_MESSAGES[currentLanguage] || PROVIDER_MESSAGES.en;
   if (code === "provider-timeout") return copy.timeout;
   if (code === "provider-response-invalid" || code === "provider-response-too-large") return copy.invalid;
@@ -319,6 +320,7 @@ function friendlyProviderError(error) {
   if (/^provider-http-\d+/.test(code)) {
     return require("./provider-errors.cjs").providerHttpError(code, currentLanguage) || copy.unavailable;
   }
+  if (require("./cert-trust.cjs").isTlsFailure(code)) return require("./provider-errors.cjs").providerDiagnosticError(code, currentLanguage) || copy.unavailable;
   if (/^(provider-|fetch failed|net::)/i.test(code) || error instanceof TypeError) return copy.unavailable;
   return copy.unavailable;
 }
@@ -1463,10 +1465,21 @@ ipcMain.handle("ai:openrouter-chat", async (_event, request) => {
   }
 });
 
+// TLS 失敗時讀取對方憑證指紋給使用者核對；只讀憑證，不送請求內容與金鑰。
+async function attachCertificateHint(profile, result) {
+  const diagnostics = result?.diagnostics;
+  if (!diagnostics || diagnostics.stage !== "certificate") return result;
+  if (certTrustApi().normalizeCertFingerprint(profile?.certFingerprint)) return result;
+  try {
+    const peer = await certTrustApi().readPeerCertificate(diagnostics.endpoint || profile?.baseUrl);
+    return { ...result, diagnostics: { ...diagnostics, certFingerprint: peer.fingerprint, certPem: peer.certPem, certSubject: peer.subject, certIssuer: peer.issuer, certValidTo: peer.validTo } };
+  } catch { return result; }
+}
+
 ipcMain.handle("ai:provider-settings", async () => providerSettingsApi().readProviderSettings(app.getPath("userData")));
 
 ipcMain.handle("ai:provider-upsert", async (_event, input = {}) => {
-  try { return await providerSettingsApi().upsertProviderProfile(app.getPath("userData"), input); }
+  try { const value = await providerSettingsApi().upsertProviderProfile(app.getPath("userData"), input); invalidatePinnedCerts(); return value; }
   catch (error) { throw new Error(friendlyProviderError(error)); }
 });
 
@@ -1476,28 +1489,28 @@ ipcMain.handle("ai:provider-select", async (_event, id) => {
 });
 
 ipcMain.handle("ai:provider-remove", async (_event, id) => {
-  try { return await providerSettingsApi().removeProviderProfile(app.getPath("userData"), String(id || "")); }
+  try { const value = await providerSettingsApi().removeProviderProfile(app.getPath("userData"), String(id || "")); invalidatePinnedCerts(); return value; }
   catch (error) { throw new Error(friendlyProviderError(error)); }
 });
 
 ipcMain.handle("ai:provider-test", async (_event, id) => {
   try {
     const profile = await providerSettingsApi().providerProfileWithSecret(app.getPath("userData"), String(id || ""));
-    return await providerClientApi().testProvider((url, options) => net.fetch(url, options), profile);
+    return await attachCertificateHint(profile, await providerClientApi().testProvider(providerFetch(profile), profile));
   } catch (error) { throw new Error(friendlyProviderError(error)); }
 });
 
 ipcMain.handle("ai:provider-models", async (_event, id) => {
   try {
     const profile = await providerSettingsApi().providerProfileWithSecret(app.getPath("userData"), String(id || ""));
-    return await providerClientApi().listProviderModels((url, options) => net.fetch(url, options), profile);
+    return await providerClientApi().listProviderModels(providerFetch(profile), profile);
   } catch (error) { throw new Error(friendlyProviderError(error)); }
 });
 
 ipcMain.handle("ai:provider-chat", async (_event, request = {}) => {
   try {
     const profile = await providerSettingsApi().providerProfileWithSecret(app.getPath("userData"), String(request.profileId || ""));
-    return await providerClientApi().providerChat((url, options) => net.fetch(url, options), profile, request);
+    return await providerClientApi().providerChat(providerFetch(profile), profile, request);
   } catch (error) { throw new Error(friendlyProviderError(error)); }
 });
 
@@ -1594,6 +1607,36 @@ ipcMain.handle("documents:download-remote-assets", async (_event, request) => {
     return { assets: urls.map((url) => ({ url, ok: false, error: error?.message || "download-failed" })) };
   }
 });
+
+// 自簽憑證信任：只放行「使用者已核對指紋並儲存的 provider 主機」，其餘一律維持 Chromium 嚴格驗證。
+const pinnedCertCache = { at: 0, profiles: [], needsRefresh: true };
+
+async function pinnedProfiles(force) {
+  const now = Date.now();
+  if (!force && !pinnedCertCache.needsRefresh && now - pinnedCertCache.at < 30_000) return pinnedCertCache.profiles;
+  pinnedCertCache.needsRefresh = false;
+  try { pinnedCertCache.profiles = (await providerSettingsApi().readProviderSettings(app.getPath("userData"))).profiles || []; }
+  catch { pinnedCertCache.profiles = []; }
+  pinnedCertCache.at = now;
+  return pinnedCertCache.profiles;
+}
+
+function invalidatePinnedCerts() { pinnedCertCache.needsRefresh = true; void pinnedProfiles(true).catch(() => {}); }
+
+// Electron 的 app certificate-error 對 net.fetch／net.request 都不觸發，而且 Chromium 會快取負面結果
+// （皆為實測結論）。因此改成：有指紋的 provider 走自有 Node TLS，以使用者核准過的憑證當信任锚；
+// 其餘請求一律照舊走 net.fetch，預設 session 完全不受影響。
+function providerFetch(profile) {
+  const trust = certTrustApi();
+  const fingerprint = trust.normalizeCertFingerprint(profile?.certFingerprint);
+  const certPem = trust.normalizeCertPem(profile?.certPem);
+  const pinnedOrigin = fingerprint && certPem ? trust.originOf(profile?.baseUrl) : "";
+  return (url, options = {}) => {
+    // 只有同源 https 請求才走自訂信任锚；協定、主機或埠不同就回到 Chromium 嚴格驗證。
+    if (pinnedOrigin && trust.isHttpsTarget(url) && trust.originOf(url) === pinnedOrigin) return trust.pinnedHttpsFetch(url, { certFingerprint: fingerprint, certPem }, options);
+    return net.fetch(url, options);
+  };
+}
 
 app.whenReady().then(async () => {
   if (!hasSingleInstanceLock) return;

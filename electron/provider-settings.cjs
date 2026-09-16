@@ -2,6 +2,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 const { clearSecureJson, readSecureJson, writeAtomic, writeSecureJson } = require("./secure-json-vault.cjs");
+const { fingerprintFromCertificate, normalizeCertFingerprint, normalizeCertPem, originOf } = require("./cert-trust.cjs");
 
 const SETTINGS_FILE = "ai-provider-settings.json";
 const VAULT_NAMESPACE = "ai-provider-secrets";
@@ -86,6 +87,21 @@ function normalizeProfile(value = {}, previous = null, preserveTimestamps = fals
   const now = Date.now();
   const id = /^[a-zA-Z0-9_-]{8,80}$/.test(String(value.id || "")) ? String(value.id) : previous?.id || randomUUID();
   const name = safeText(value.name, 80) || previous?.name || (type === "ollama" ? "Ollama" : "Custom Gateway");
+  const baseUrl = normalizeBaseUrl(value.baseUrl || previous?.baseUrl, type);
+  const originChanged = Boolean(previous) && originOf(previous.baseUrl) !== originOf(baseUrl);
+  // 憑證信任只能由使用者明確提交「指紋＋PEM」成對才會生效，兩邊必須互相吻合。
+  // 沒帶新憑證時才沿用舊值，且限同一主機；換了主機就一律作廢，避免把 A 主機的信任套到 B。
+  const incomingFingerprint = normalizeCertFingerprint(value.certFingerprint);
+  const incomingPem = normalizeCertPem(value.certPem);
+  // 明確傳空字串代表使用者按了「撤銷信任」，要跟「沒帶這個欄位」區隔開來。
+  const explicitRevoke = (Object.hasOwn(value, "certFingerprint") && !String(value.certFingerprint ?? "").trim())
+    || (Object.hasOwn(value, "certPem") && !String(value.certPem ?? "").trim());
+  const inherit = !explicitRevoke && !incomingFingerprint && !incomingPem && Boolean(previous) && !originChanged;
+  const candidateFingerprint = incomingFingerprint || (inherit ? normalizeCertFingerprint(previous?.certFingerprint) : "");
+  const candidatePem = incomingPem || (inherit ? normalizeCertPem(previous?.certPem) : "");
+  const pairedFingerprint = fingerprintFromCertificate({ data: candidatePem });
+  const trustedFingerprint = candidateFingerprint && pairedFingerprint === candidateFingerprint ? candidateFingerprint : "";
+  const trustedCertPem = trustedFingerprint ? candidatePem : "";
   const model = safeText(value.model, 240);
   if (!model) throw new Error("provider-model-required");
   return {
@@ -93,8 +109,11 @@ function normalizeProfile(value = {}, previous = null, preserveTimestamps = fals
     name,
     type,
     apiMode,
-    baseUrl: normalizeBaseUrl(value.baseUrl || previous?.baseUrl, type),
+    baseUrl,
     model,
+    // 自簽憑證信任（選填）：只有使用者核對指紋後才會寫入；換主機時自動失效。
+    certFingerprint: trustedFingerprint,
+    certPem: trustedCertPem,
     createdAt: Number(previous?.createdAt) > 0 ? Number(previous.createdAt) : now,
     updatedAt: preserveTimestamps && Number(value.updatedAt) > 0 ? Number(value.updatedAt) : now,
   };

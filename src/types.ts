@@ -325,6 +325,10 @@ export interface AIProviderProfile {
   createdAt: number;
   updatedAt: number;
   keyConfigured: boolean;
+  /** 使用者明確核對並信任的自簽憑證 SHA-256 指紋（大寫 hex，64 字元）。 */
+  certFingerprint?: string;
+  /** 與指紋成對保存的 PEM 憑證，作為該主機的專屬信任锚。 */
+  certPem?: string;
 }
 
 export interface AIProviderSettings {
@@ -337,7 +341,7 @@ export interface AIProviderModel {
   name: string;
 }
 
-export type AIProviderDiagnosticStage = "url" | "connection" | "api-path" | "http" | "model" | "ok";
+export type AIProviderDiagnosticStage = "url" | "connection" | "certificate" | "api-path" | "http" | "model" | "ok";
 
 export interface AIProviderDiagnostics {
   stage: AIProviderDiagnosticStage;
@@ -345,6 +349,11 @@ export interface AIProviderDiagnostics {
   status?: number;
   endpoint?: string;
   model?: string;
+  certFingerprint?: string;
+  certPem?: string;
+  certSubject?: string;
+  certIssuer?: string;
+  certValidTo?: string;
 }
 
 export interface AIProviderTestResult {
