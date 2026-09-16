@@ -5,9 +5,20 @@ import path from "node:path";
 const base = process.env.CHENGJING_URL || "http://127.0.0.1:5173";
 const output = path.resolve("qa-artifacts/markdown-editor");
 await fs.mkdir(output, { recursive: true });
-const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext({ viewport: { width: 1540, height: 960 }, colorScheme: "dark", locale: "zh-TW" });
-const page = await context.newPage();
+// 設定了 CHENGJING_CDP_URL 就接到真的 macOS Electron 執行個體，做「真機」驗證。
+const cdpUrl = process.env.CHENGJING_CDP_URL || "";
+const browser = cdpUrl ? await chromium.connectOverCDP(cdpUrl) : await chromium.launch({ headless: true });
+const context = cdpUrl ? browser.contexts()[0] : await browser.newContext({ viewport: { width: 1540, height: 960 }, colorScheme: "dark", locale: "zh-TW" });
+
+async function pickMainWindow(activeContext) {
+  await activeContext.waitForEvent("page", { timeout: 3_000 }).catch(() => null);
+  const pages = activeContext.pages().filter((item) => /index\.html(\?|$)/.test(item.url()));
+  const found = pages.find((item) => !item.url().includes("quick-capture")) || pages[0];
+  if (!found) throw new Error("electron-main-window-not-found");
+  return found;
+}
+
+const page = cdpUrl ? await pickMainWindow(context) : await context.newPage();
 await page.addInitScript(() => {
   document.addEventListener("error", (event) => {
     const node = event.target;
@@ -37,11 +48,17 @@ async function cards() {
   }));
 }
 
-await page.goto(base, { waitUntil: "networkidle" });
+if (cdpUrl) await page.reload({ waitUntil: "networkidle" });
+else await page.goto(base, { waitUntil: "networkidle" });
 await page.getByRole("button", { name: "卡片庫", exact: true }).click();
 await page.locator(".library-card").first().click();
 await page.locator(".card-editor-panel").waitFor();
 await page.waitForTimeout(600);
+// 模式選擇會記在本地，先確定回到富文字再量，否則第一次量不到編輯區。
+if ((await page.locator(".card-content-editor").getAttribute("data-mode")) !== "rich") {
+  await page.locator(".editor-mode-switch button").filter({ hasText: "富文字" }).click();
+}
+await page.locator(".prose-editor").waitFor();
 
 const proseBox = await page.locator(".prose-editor").boundingBox();
 const fillsHeight = Boolean(proseBox && proseBox.height > 240);

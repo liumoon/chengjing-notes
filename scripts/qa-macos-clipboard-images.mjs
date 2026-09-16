@@ -16,7 +16,9 @@ const output = path.resolve("qa-artifacts/macos-clipboard-images");
 const tempData = await fs.mkdtemp(path.join(os.tmpdir(), "chengjing-macos-clipboard-"));
 const debugPort = await freePort();
 const cardTitle = `剪貼簿圖片封裝驗收-${Date.now()}`;
-const child = spawn(executable, [`--remote-debugging-port=${debugPort}`], {
+// 指向開發用 Electron 執行檔時要把專案目錄當參數傳進去，否則只會開預設頁面。
+const spawnArgs = process.env.CHENGJING_DEV_APP ? [`--remote-debugging-port=${debugPort}`, "."] : [`--remote-debugging-port=${debugPort}`];
+const child = spawn(executable, spawnArgs, {
   cwd: root,
   env: {
     ...process.env,
@@ -155,13 +157,17 @@ try {
   const markdownTab = page.getByRole("tab", { name: "Markdown", exact: true });
   await waitForTabEnabled(page, "Markdown");
   await markdownTab.evaluate((element) => (element instanceof HTMLButtonElement ? element.click() : undefined));
-  const markdownInput = page.locator(".markdown-source-input");
+  const markdownInput = page.locator(".markdown-codemirror .cm-content");
   await markdownInput.waitFor();
+  // Markdown 編輯器換成 CodeMirror 即時預覽：先切到「原始碼」才看得到整份語法。
+  const previewToggle = page.locator(".markdown-source-tools button").first();
+  if ((await previewToggle.getAttribute("aria-pressed")) === "true") await previewToggle.click();
+  await page.waitForTimeout(500);
   await page.waitForFunction((ids) => {
-    const value = document.querySelector(".markdown-source-input")?.value || "";
+    const value = document.querySelector(".markdown-codemirror .cm-content")?.innerText || "";
     return ids.every((id) => value.includes(`attachment://${id}`));
   }, inlineIds);
-  const markdownValue = await markdownInput.inputValue();
+  const markdownValue = await markdownInput.innerText();
   const markdownRefsComplete = inlineIds.every((id) => markdownValue.includes(`![`) && markdownValue.includes(`attachment://${id}`));
   const markdownImageCount = (markdownValue.match(/!\[[^\]]*]\(attachment:\/\/[^)]+\)/g) || []).length;
   await waitForTabEnabled(page, "富文字");
