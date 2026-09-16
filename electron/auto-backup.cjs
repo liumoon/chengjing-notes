@@ -2,6 +2,7 @@ const fs = require("node:fs/promises");
 const { createHash } = require("node:crypto");
 const { createReadStream } = require("node:fs");
 const path = require("node:path");
+const attachmentStore = require("./attachment-store.cjs");
 
 const SETTINGS_FILE = "auto-backup-settings.json";
 const BACKUP_PREFIX = "ChengJing-AutoBackup-";
@@ -105,11 +106,13 @@ async function hashFile(filePath) {
 }
 
 function safeAssetSource(root, relativePath) {
-  const base = path.resolve(root || "");
-  const normalized = String(relativePath || "").replaceAll("\\", "/").replace(/^\/+/, "");
-  const candidate = path.resolve(base, normalized);
-  if (!normalized || (candidate !== base && !candidate.startsWith(`${base}${path.sep}`))) throw new Error("backup-asset-path-invalid");
-  return candidate;
+  // 附件根目錄內的路徑（舊單層與新的 objects/<shard>/…）都要能備份，
+  // 但 staging 與任何穿越根目錄的路徑一律拒絕。
+  try {
+    return attachmentStore.resolveAttachmentPath(root || "", relativePath);
+  } catch (_error) {
+    throw new Error("backup-asset-path-invalid");
+  }
 }
 
 async function copyIncrementalAssets(directory, assetsDirectory, assets = []) {

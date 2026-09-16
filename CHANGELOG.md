@@ -10,6 +10,7 @@
 - 新增單一卡片「匯出 Markdown」：無圖片輸出 `.md`，有圖片輸出含 `assets/` 的 ZIP；全庫 Markdown 備份改用真正的 TipTap Markdown serializer，不再以 `plainText` 代替格式。附件新增可選 `role` 欄位，JSON 備份與同步協定保持相容，無需破壞性遷移。
 - 匯入與雙模式的進度、同意、警告與失敗文案提供繁中、簡中、英、日、韓五語，並新增文案完整性測試。
 - 測試：新增固定 DOCX／HTML／PDF fixture 的匯入測試、安全測試（script、`onerror`、`javascript:`、私有 IP、路徑穿越）、核取清單 ID 往返測試與五語文案測試。
+- 附件儲存改為安全分層：新附件落在 `attachments/objects/<shard>/<附件ID>.<副檔名>`，寫入一律先寫 `staging/*.part` 再原子 rename，不再留下半檔；舊單層附件原封不動繼續可讀，不批次搬移、不需資料庫遷移。`relativePath` 視為不透明相對路徑，讀取、刪除、備份、同步與 `chengjing-attachment://` 協定都同時支援新舊兩代格式；`staging`、`..`、絕對路徑與 symlink 逃離附件根目錄一律拒絕。附件統計與孤兒清理改為遞迴掃描受管理路徑，刪除後自動清掉空 shard。Android 以同一套規則實作 `safeFile`、匯入暫存與 WebView 附件攔截。
 - 自訂 AI Provider 的 HTTP 連線放寬至 localhost、loopback、RFC1918 私有網段與 IPv6 ULA；Android 同步允許私有區域網路 HTTP，仍拒絕公開網路的 HTTP Provider。
 - 2026-09-12 完成 Apple Silicon macOS 封裝驗收：主程式、選單列／快速記錄、⌘\ 快捷鍵、標題列、響應式版面、持久化、附件、AI、本地備份、DMG 與 ad-hoc 簽章驗證均通過；正式 Developer ID 簽章、公證與含正式 OAuth client 的發佈包仍待完成。
 

@@ -63,6 +63,7 @@ The macOS build is currently ad-hoc signed and is not notarized with an Apple De
 - Google cloud and local backup can run together; Google uses only ChengJing's hidden App Data and keeps a current snapshot plus a previous-day rescue point
 - Local MCP for controlled Codex, Claude Code, and compatible-tool access to notes, whiteboards, kanban boards, neurons, and tasks
 - Complete JSON backup/restore, Markdown plus attachment ZIP export, and incremental attachment backup with hash-based deduplication
+- Tiered attachment storage: new files live under `attachments/objects/<shard>/` and are written to a staging file then renamed atomically, so a crash never leaves a half-written file. Legacy flat attachments stay exactly where they are and remain readable with no migration; usage totals and orphan cleanup cover both generations, while traversal, absolute paths and symlinks escaping the attachment folder are rejected
 - Follow-system, light, dark, and low-saturation ink themes
 - Global interface scale at 90%, 100%, 110%, and 120%
 - Five interface languages: Traditional Chinese, Simplified Chinese, English, Japanese, and Korean

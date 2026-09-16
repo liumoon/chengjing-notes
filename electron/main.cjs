@@ -81,6 +81,8 @@ if (!hasSingleInstanceLock) {
 }
 protocol.registerSchemesAsPrivileged([{ scheme: "chengjing-attachment", privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }]);
 
+const attachmentStore = require("./attachment-store.cjs");
+
 function attachmentsDirectory() {
   return path.join(app.getPath("userData"), "attachments");
 }
@@ -235,16 +237,20 @@ async function reconcileMcpServer() {
 }
 
 function safeAttachmentName(value) {
-  const cleaned = path.basename(String(value || "attachment")).replace(/[\u0000-\u001f<>:"/\\|?*]+/g, "-").replace(/\s+/g, " ").trim();
-  return (cleaned || "attachment").slice(0, 160);
+  return attachmentStore.safeAttachmentName(path.basename(String(value || "attachment")));
 }
 
-function resolveAttachmentPath(relativePath) {
-  const root = path.resolve(attachmentsDirectory());
-  const normalized = String(relativePath || "").replaceAll("\\", "/").replace(/^\/+/, "");
-  const candidate = path.resolve(root, normalized);
-  if (!normalized || (candidate !== root && !candidate.startsWith(`${root}${path.sep}`))) throw new Error("invalid-attachment-path");
-  return candidate;
+function attachmentRecord(fields) {
+  return {
+    id: fields.id,
+    name: fields.name,
+    mime: String(fields.mime || "application/octet-stream"),
+    size: fields.size,
+    storage: "file",
+    relativePath: fields.relativePath,
+    sha256: fields.sha256,
+    createdAt: Number(fields.createdAt) || Date.now(),
+  };
 }
 
 async function importAttachmentPath(request = {}) {
@@ -252,42 +258,21 @@ async function importAttachmentPath(request = {}) {
   const stat = await fs.stat(sourcePath);
   if (!stat.isFile()) throw new Error("attachment-source-invalid");
   const id = String(request.id || randomUUID()).slice(0, 200);
-  const fileId = id.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 120) || randomUUID();
   const name = safeAttachmentName(request.name || path.basename(sourcePath));
-  const relativePath = `${fileId}-${name}`;
-  const destination = resolveAttachmentPath(relativePath);
-  await fs.mkdir(attachmentsDirectory(), { recursive: true });
-  if (sourcePath !== destination) await fs.copyFile(sourcePath, destination);
-  const sha256 = await sha256File(destination);
-  return { id, name, mime: String(request.mime || "application/octet-stream"), size: stat.size, storage: "file", relativePath, sha256, createdAt: Number(request.createdAt) || Date.now() };
+  const relativePath = attachmentStore.newAttachmentRelativePath(id, name);
+  const destination = attachmentStore.resolveAttachmentPath(attachmentsDirectory(), relativePath);
+  if (sourcePath !== destination) await attachmentStore.copyFileAtomic(attachmentsDirectory(), relativePath, sourcePath);
+  const sha256 = await attachmentStore.hashFile(destination);
+  return attachmentRecord({ id, name, mime: request.mime, size: stat.size, relativePath, sha256, createdAt: request.createdAt });
 }
 
 async function importAttachmentData(request = {}) {
   const id = String(request.id || randomUUID()).slice(0, 200);
-  const fileId = id.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 120) || randomUUID();
   const name = safeAttachmentName(request.name);
-  const relativePath = `${fileId}-${name}`;
-  const destination = resolveAttachmentPath(relativePath);
+  const relativePath = attachmentStore.newAttachmentRelativePath(id, name);
   const buffer = Buffer.from(String(request.data || ""), "base64");
-  await fs.mkdir(attachmentsDirectory(), { recursive: true });
-  await fs.writeFile(destination, buffer, { mode: 0o600 });
-  return { id, name, mime: String(request.mime || "application/octet-stream"), size: buffer.byteLength, storage: "file", relativePath, sha256: createHash("sha256").update(buffer).digest("hex"), createdAt: Number(request.createdAt) || Date.now() };
-}
-
-async function directoryBytes(directory) {
-  let total = 0;
-  let count = 0;
-  try {
-    const entries = await fs.readdir(directory, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isFile()) continue;
-      total += (await fs.stat(path.join(directory, entry.name))).size;
-      count += 1;
-    }
-  } catch (error) {
-    if (error?.code !== "ENOENT") throw error;
-  }
-  return { bytes: total, count };
+  await attachmentStore.writeFileAtomic(attachmentsDirectory(), relativePath, buffer);
+  return attachmentRecord({ id, name, mime: request.mime, size: buffer.byteLength, relativePath, sha256: createHash("sha256").update(buffer).digest("hex"), createdAt: request.createdAt });
 }
 
 const ERROR_MESSAGES = {
@@ -1582,22 +1567,9 @@ function pendingAttachmentRemovals() {
 ipcMain.handle("attachment:remove", async (_event, request = {}) => pendingAttachmentRemovals().defer(request.relativePath));
 ipcMain.handle("attachment:pending-paths", async () => pendingAttachmentRemovals().pendingPaths());
 ipcMain.handle("attachment:sweep-pending", async (_event, request = {}) => pendingAttachmentRemovals().sweep(Array.isArray(request.keep) ? request.keep : []));
-ipcMain.handle("attachment:stats", async () => directoryBytes(attachmentsDirectory()));
-ipcMain.handle("attachment:read-data", async (_event, request = {}) => (await fs.readFile(resolveAttachmentPath(request.relativePath))).toString("base64"));
-ipcMain.handle("attachment:cleanup", async (_event, request = {}) => {
-  const keep = new Set((Array.isArray(request.keep) ? request.keep : []).map((value) => path.basename(String(value))));
-  let removed = 0;
-  try {
-    for (const entry of await fs.readdir(attachmentsDirectory(), { withFileTypes: true })) {
-      if (!entry.isFile() || keep.has(entry.name)) continue;
-      await fs.rm(resolveAttachmentPath(entry.name), { force: true });
-      removed += 1;
-    }
-  } catch (error) {
-    if (error?.code !== "ENOENT") throw error;
-  }
-  return { removed };
-});
+ipcMain.handle("attachment:stats", async () => attachmentStore.directoryStats(attachmentsDirectory()));
+ipcMain.handle("attachment:read-data", async (_event, request = {}) => (await fs.readFile(await attachmentStore.resolveReadablePath(attachmentsDirectory(), request.relativePath))).toString("base64"));
+ipcMain.handle("attachment:cleanup", async (_event, request = {}) => attachmentStore.cleanupAttachments(attachmentsDirectory(), request.keep));
 ipcMain.handle("attachment:restore-from-backup", async (_event, request = {}) => {
   return require("./attachment-recovery.cjs").restoreAttachmentFile(attachmentsDirectory(), request);
 });
@@ -1626,7 +1598,7 @@ app.whenReady().then(async () => {
     try {
       const url = new URL(request.url);
       const relativePath = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
-      const filePath = resolveAttachmentPath(relativePath);
+      const filePath = await attachmentStore.resolveReadablePath(attachmentsDirectory(), relativePath);
       const stat = await fs.stat(filePath);
       if (!stat.isFile()) throw new Error("attachment-not-found");
       const response = await net.fetch(pathToFileURL(filePath).href);

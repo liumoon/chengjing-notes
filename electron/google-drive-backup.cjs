@@ -3,6 +3,7 @@ const { createReadStream } = require("node:fs");
 const fs = require("node:fs/promises");
 const http = require("node:http");
 const path = require("node:path");
+const attachmentStore = require("./attachment-store.cjs");
 const {
   clearSecureToken,
   hasSecureToken,
@@ -314,11 +315,11 @@ function createGoogleDriveBackupService(options) {
   }
 
   function resolveAssetPath(relativePath) {
-    const root = path.resolve(attachmentsDirectory);
-    const normalized = String(relativePath || "").replaceAll("\\", "/").replace(/^\/+/, "");
-    const candidate = path.resolve(root, normalized);
-    if (!normalized || (candidate !== root && !candidate.startsWith(`${root}${path.sep}`))) throw new Error("cloud-backup-asset-path-invalid");
-    return candidate;
+    try {
+      return attachmentStore.resolveAttachmentPath(attachmentsDirectory, relativePath);
+    } catch (_error) {
+      throw new Error("cloud-backup-asset-path-invalid");
+    }
   }
 
   async function uploadMissingAssets(files, assets) {
@@ -748,8 +749,7 @@ function createGoogleDriveBackupService(options) {
     if (!/^[a-f0-9]{64}$/.test(asset.sha256)) throw new Error("sync-invalid-asset");
     const listed = await syncList("asset");
     if (listed.files.some((file) => file.name === asset.sha256)) return;
-    const source = path.resolve(attachmentsDirectory, asset.relativePath);
-    if (!source.startsWith(path.resolve(attachmentsDirectory) + path.sep)) throw new Error("sync-invalid-path");
+    const source = resolveAssetPath(asset.relativePath);
     const hash = createHash("sha256"); for await (const chunk of createReadStream(source)) hash.update(chunk);
     if (hash.digest("hex") !== asset.sha256) throw new Error("sync-asset-hash-mismatch");
     return createStreamFile({ name: asset.sha256, parents: ["appDataFolder"], appProperties: { app: "chengjing-sync-v1", kind: "asset" } }, source, (await fs.stat(source)).size);
@@ -758,10 +758,12 @@ function createGoogleDriveBackupService(options) {
     if (!/^[a-f0-9]{64}$/.test(asset.sha256)) throw new Error("sync-invalid-asset");
     const listed = await syncList("asset"); const match = listed.files.find((file) => file.name === asset.sha256);
     if (!match) throw new Error("sync-attachment-missing");
-    const relativePath = `sync-${randomUUID()}`; const destination = path.join(attachmentsDirectory, relativePath);
+    const relativePath = attachmentStore.newAttachmentRelativePath(`sync-${randomUUID()}`);
+    await attachmentStore.ensureLayout(attachmentsDirectory);
+    const destination = attachmentStore.resolveAttachmentPath(attachmentsDirectory, relativePath);
     await streamDownload(match.id, destination);
     const hash = createHash("sha256"); for await (const chunk of createReadStream(destination)) hash.update(chunk);
-    if (hash.digest("hex") !== asset.sha256) { await fs.rm(destination, { force: true }); throw new Error("sync-attachment-corrupt"); }
+    if (hash.digest("hex") !== asset.sha256) { await attachmentStore.removeAttachmentFile(attachmentsDirectory, relativePath); throw new Error("sync-attachment-corrupt"); }
     return { ...asset, relativePath, storage: "file" };
   }
   return {

@@ -74,6 +74,7 @@
     "qa:advanced-integrations": "node scripts/qa-advanced-integrations.mjs",
     "qa:health": "node scripts/qa-health-runtime.mjs",
     "qa:health-suite": "node scripts/qa-health-suite.mjs",
+    "qa:attachment-storage": "node scripts/qa-attachment-storage.mjs",
     "smoke:electron": "electron scripts/electron-smoke.cjs",
     "smoke:electron-main": "node scripts/electron-main-smoke.mjs",
     "icons": "node scripts/build-icon.mjs",

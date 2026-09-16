@@ -37,7 +37,8 @@ class NativeServices(private val context: Context, private val backupApp: String
     private val http by lazy { OkHttpClient.Builder().callTimeout(180, TimeUnit.SECONDS).followRedirects(false).build() }
     private fun objectValue(key: String, fallback: String = "{}") = JSONObject(prefs.getString(key, fallback)!!)
     private fun save(key: String, value: JSONObject): JSONObject { check(prefs.edit().putString(key, value.toString()).commit()); return value }
-    fun safeFile(name: String): File { val file = File(files, name).canonicalFile; require(file.parentFile == files.canonicalFile) { "Invalid attachment path" }; return file }
+    /** 附件根目錄內的檔案；舊單層與新的 objects/<shard>/… 分層路徑都支援。 */
+    fun safeFile(name: String): File = AttachmentPaths.resolve(files, name)
     private fun json(url: String, method: String = "GET", body: JSONObject? = null, secret: String = ""): JSONObject {
         val parsed = Uri.parse(url)
         val scheme = parsed.scheme?.lowercase()
@@ -55,17 +56,18 @@ class NativeServices(private val context: Context, private val backupApp: String
     fun importUri(uri: Uri): JSONObject {
         var name = "attachment"
         context.contentResolver.query(uri, null, null, null, null)?.use { cursor -> val column=cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);if (cursor.moveToFirst()&&column>=0) name = cursor.getString(column) }
-        val id = UUID.randomUUID().toString()
-        val file = safeFile(id)
-        val temp = safeFile("$id.part")
-        context.contentResolver.openInputStream(uri)!!.use { input -> temp.outputStream().use { output -> input.copyTo(output) } }
-        check(temp.renameTo(file))
-        return JSONObject().put("name", name).put("path", id).put("data", "")
+        val relativePath = AttachmentPaths.newPath(UUID.randomUUID().toString(), name)
+        val temp = AttachmentPaths.stagingFile(files)
+        try {
+            context.contentResolver.openInputStream(uri)!!.use { input -> temp.outputStream().use { output -> input.copyTo(output); output.flush(); output.fd.sync() } }
+            AttachmentPaths.promote(files, temp, relativePath)
+        } catch (error: Exception) { temp.delete(); throw error }
+        return JSONObject().put("name", name).put("path", relativePath).put("data", "")
     }
     private fun attachment(file: File, args: JSONObject): JSONObject {
         val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().use { input -> val buffer = ByteArray(65536); while (true) { val count=input.read(buffer); if(count<0) break; digest.update(buffer,0,count) } }
-        return JSONObject().put("id", args.optString("id", file.name)).put("name", args.optString("name", "attachment")).put("mime", args.optString("mime", "application/octet-stream")).put("size", file.length()).put("relativePath", file.name).put("storage", "file").put("sha256", digest.digest().joinToString("") { "%02x".format(it) }).put("createdAt", args.optLong("createdAt", System.currentTimeMillis()))
+        return JSONObject().put("id", args.optString("id", file.name)).put("name", args.optString("name", "attachment")).put("mime", args.optString("mime", "application/octet-stream")).put("size", file.length()).put("relativePath", AttachmentPaths.relative(files, file)).put("storage", "file").put("sha256", digest.digest().joinToString("") { "%02x".format(it) }).put("createdAt", args.optLong("createdAt", System.currentTimeMillis()))
     }
     fun attachmentResponse(name: String, mimeHint: String = ""): WebResourceResponse? = try {
         val file = safeFile(name)
@@ -300,12 +302,12 @@ class NativeServices(private val context: Context, private val backupApp: String
         "clipboard.write" -> { val manager=context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager; manager.setPrimaryClip(ClipData.newPlainText("澄境",args.getString("text"))); save("clipboard",args); JSONObject().put("written",true) }
         "clipboard.read" -> { val manager=context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager; val text=manager.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString() ?: ""; val saved=objectValue("clipboard"); JSONObject().put("text",text).put("payload",if(saved.optString("text")==text) saved.opt("payload") else JSONObject.NULL) }
         "attachments.importPath" -> attachment(safeFile(args.getString("sourcePath")),args)
-        "attachments.importData" -> { val file=safeFile(UUID.randomUUID().toString()); file.writeBytes(Base64.decode(args.getString("data"),Base64.DEFAULT)); attachment(file,args) }
+        "attachments.importData" -> { val relativePath=AttachmentPaths.newPath(args.optString("id").ifEmpty{UUID.randomUUID().toString()},args.optString("name")); val file=AttachmentPaths.writeAtomic(files,relativePath,Base64.decode(args.getString("data"),Base64.DEFAULT)); attachment(file,args) }
         "attachments.readData" -> Base64.encodeToString(safeFile(args.getString("path")).readBytes(),Base64.NO_WRAP)
-        "attachments.remove" -> { val pending=objectValue("pending-removal"); pending.put(args.getString("path"),true); save("pending-removal",pending); JSONObject().put("removed",true) }
+        "attachments.remove" -> { val pending=objectValue("pending-removal"); pending.put(AttachmentPaths.normalize(args.getString("path")),true); save("pending-removal",pending); JSONObject().put("removed",true) }
         "attachments.pendingPaths" -> JSONArray(objectValue("pending-removal").keys().asSequence().toList())
-        "attachments.sweepPending" -> { val keep=args.getJSONArray("keep"); val names=(0 until keep.length()).map{keep.getString(it)}.toSet(); var removed=0; objectValue("pending-removal").keys().forEach { if(it !in names && safeFile(it).delete()) removed++ }; save("pending-removal",JSONObject()); JSONObject().put("removed",removed) }
-        "attachments.stats" -> JSONObject().put("count",files.listFiles()?.size ?: 0).put("bytes",files.listFiles()?.sumOf { it.length() } ?: 0)
+        "attachments.sweepPending" -> { val keep=args.getJSONArray("keep"); val names=(0 until keep.length()).map{keep.getString(it)}.toMutableSet(); for(i in 0 until keep.length()) runCatching{AttachmentPaths.normalize(keep.getString(i))}.getOrNull()?.let{names.add(it)}; val keepSet=names.toSet(); var removed=0; objectValue("pending-removal").keys().forEach { if(AttachmentPaths.isSafe(it) && !AttachmentPaths.keepMatches(keepSet,it) && AttachmentPaths.delete(files,it)) removed++ }; save("pending-removal",JSONObject()); JSONObject().put("removed",removed) }
+        "attachments.stats" -> { val (count,bytes)=AttachmentPaths.stats(files); JSONObject().put("count",count).put("bytes",bytes) }
         "ai.keyStatus" -> JSONObject().put("configured",store.get("openrouter").isNotEmpty()).put("encrypted",true).put("storage","android-keystore")
         "ai.setKey" -> { store.put("openrouter",args.getString("value")); call("ai.keyStatus",JSONObject()) }
         "ai.clearKey" -> { store.put("openrouter",""); call("ai.keyStatus",JSONObject()) }
@@ -352,7 +354,7 @@ class NativeServices(private val context: Context, private val backupApp: String
                 require(document!=null){"The backup attachment is missing. Select the original backup folder."}
                 source.parentFile?.mkdirs();context.contentResolver.openInputStream(document.uri)!!.use{input->source.outputStream().use{output->input.copyTo(output)}}
             }
-            val target=safeFile(UUID.randomUUID().toString());source.copyTo(target);val result=attachment(target,args);require(result.getString("sha256")==hash);result
+            val relativePath=AttachmentPaths.newPath(args.optString("id").ifEmpty{UUID.randomUUID().toString()},args.optString("name"));val target=AttachmentPaths.copyAtomic(files,relativePath,source);val result=attachment(target,args);require(result.getString("sha256")==hash);result
         }
         "sync.list" -> driveList(args.optString("kind","packet"))
         "sync.get" -> driveGet(args.getString("id"))
@@ -447,11 +449,13 @@ class NativeServices(private val context: Context, private val backupApp: String
     private fun downloadAsset(asset: JSONObject, legacy: Boolean=false): JSONObject {
         val hash=asset.getString("sha256");require(hash.matches(Regex("[a-f0-9]{64}")))
         val rows=driveList("asset",if(legacy)backupApp else"chengjing-sync-v1").getJSONArray("files");val match=(0 until rows.length()).map{rows.getJSONObject(it)}.first{it.getString("name")==hash||it.optJSONObject("appProperties")?.optString("sha256")==hash}
-        val file=safeFile(UUID.randomUUID().toString());val url="https://www.googleapis.com/drive/v3/files/${match.getString("id")}?alt=media"
+        val relativePath=AttachmentPaths.newPath(args.optString("id").ifEmpty{UUID.randomUUID().toString()},args.optString("name"))
+        val temp=AttachmentPaths.stagingFile(files);val url="https://www.googleapis.com/drive/v3/files/${match.getString("id")}?alt=media"
         try {
-            http.newCall(Request.Builder().url(url).header("Authorization","Bearer ${store.get("google-token")}").build()).execute().use{require(it.isSuccessful);it.body!!.byteStream().use{input->file.outputStream().use{output->input.copyTo(output)}}}
+            http.newCall(Request.Builder().url(url).header("Authorization","Bearer ${store.get("google-token")}").build()).execute().use{require(it.isSuccessful);it.body!!.byteStream().use{input->temp.outputStream().use{output->input.copyTo(output);output.flush();output.fd.sync()}}}
+            val file=AttachmentPaths.promote(files,temp,relativePath)
             val result=attachment(file,asset);require(result.getString("sha256")==hash){"Attachment verification failed"};return result
-        } catch(error: Exception){file.delete();throw error}
+        } catch(error: Exception){temp.delete();throw error}
     }
     private fun cloudSettings(): JSONObject {
         val settings=objectValue("cloud-backup","{\"enabled\":false,\"intervalMinutes\":30,\"lastSuccessAt\":0,\"lastKnownManifestId\":\"\",\"conflict\":false,\"accountName\":\"Google\",\"accountEmail\":\"\"}")
