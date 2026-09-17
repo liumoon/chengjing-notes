@@ -26,3 +26,9 @@ android/**/build/
 android/app/src/main/assets/public/
 android/signing/
 android-release/
+
+# 由 scripts/build-icon.mjs 產生（npm run icons 會重建）
+build/icon-1024.png
+build/icon.icns
+build/icon.ico
+build/icon.iconset/
