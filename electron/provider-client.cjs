@@ -1,5 +1,5 @@
 const { normalizeBaseUrl } = require("./provider-settings.cjs");
-const { describeError, isTlsFailure } = require("./cert-trust.cjs");
+const { describeError, isTlsFailure, normalizeCertFingerprint } = require("./cert-trust.cjs");
 
 const REQUEST_TIMEOUT_MS = 180_000;
 const DISCOVERY_TIMEOUT_MS = 20_000;
@@ -62,6 +62,13 @@ function responseError(status, payload, secret = "") {
   let detail = String(payload?.error?.message || payload?.message || "").replace(/\s+/g, " ").trim().slice(0, 280);
   if (secret && secret.length >= 4) detail = detail.replaceAll(secret, "[redacted]");
   return new Error(detail ? `provider-http-${status}:${detail}` : `provider-http-${status}`);
+}
+
+function diagnosticErrorCode(error, description) {
+  const direct = String(error?.code || "");
+  if (direct && !["net", "ERR_NETWORK", "FETCH_FAILED"].includes(direct.toUpperCase())) return direct.slice(0, 120);
+  const match = String(description || "").match(/(?:cert-[a-z-]+|ERR_[A-Z0-9_]+|[A-Z][A-Z0-9_]*(?:CERT|SSL)[A-Z0-9_]*)/i);
+  return String(match?.[0] || direct || "provider-unavailable").slice(0, 120);
 }
 
 function rejectsTemperature(payload) {
@@ -146,6 +153,7 @@ async function testProvider(fetchImpl, profile) {
     };
   } catch (error) {
     const code = describeError(error) || "provider-unavailable";
+    const errorCode = diagnosticErrorCode(error, code);
     const statusMatch = /^provider-http-(\d+)/.exec(code);
     const status = statusMatch ? Number(statusMatch[1]) : undefined;
     const stage = status === 404 ? "api-path" : status ? "http" : isTlsFailure(code) ? "certificate" : "connection";
@@ -153,7 +161,23 @@ async function testProvider(fetchImpl, profile) {
       ok: false,
       models: [],
       modelAvailable: false,
-      diagnostics: { stage, code, ...(status ? { status } : {}), endpoint: modelsEndpoint, model },
+      diagnostics: {
+        stage,
+        code,
+        errorCode,
+        errorPhase: stage === "certificate" ? "tls" : "request",
+        ...(status ? { status } : {}),
+        ...(stage === "certificate" ? {
+          storedFingerprint: normalizeCertFingerprint(normalized.certFingerprint),
+          ...(error?.presentedFingerprint ? { presentedFingerprint: normalizeCertFingerprint(error.presentedFingerprint) } : {}),
+          ...(typeof error?.fingerprintMatch === "boolean" ? { fingerprintMatch: error.fingerprintMatch } : {}),
+          ...(error?.certValidFrom ? { certValidFrom: String(error.certValidFrom).slice(0, 64) } : {}),
+          ...(error?.certValidTo ? { certValidTo: String(error.certValidTo).slice(0, 64) } : {}),
+          ...(error?.authorizationError ? { authorizationError: String(error.authorizationError).slice(0, 240) } : {}),
+        } : {}),
+        endpoint: modelsEndpoint,
+        model,
+      },
     };
   }
 }

@@ -38,6 +38,16 @@ export function AdvancedAIProviderSettings() {
   const [expanded, setExpanded] = useState(false);
   const activeProfile = settings.profiles.find((profile) => profile.id === settings.selectedProfileId);
   const editingProfile = settings.profiles.find((profile) => profile.id === editingId);
+  const storedFingerprint = diagnostics?.storedFingerprint || editingProfile?.certFingerprint || certFingerprint;
+  const presentedFingerprint = diagnostics?.presentedFingerprint || diagnostics?.certFingerprint || "";
+  const fingerprintChanged = Boolean(storedFingerprint && presentedFingerprint && diagnostics?.fingerprintMatch === false);
+  const certificateExpired = diagnostics?.errorCode === "cert-expired";
+  const canTrustPresentedCertificate = Boolean(
+    diagnostics?.stage === "certificate"
+    && !storedFingerprint
+    && presentedFingerprint
+    && diagnostics?.certPem,
+  );
   const unsaved = Boolean(editingProfile && (editingProfile.type !== type || editingProfile.apiMode !== apiMode || editingProfile.baseUrl !== baseUrl.trim().replace(/\/$/, "") || editingProfile.model !== model.trim() || apiKey.trim() || (editingProfile.certFingerprint || "") !== certFingerprint.trim()));
 
   function activate(profile: AIProviderProfile) {
@@ -106,7 +116,8 @@ export function AdvancedAIProviderSettings() {
 
   // 使用者核對指紋後才寫入信任；寫入立刻重測，讓 TLS 放行生效。
   async function trustCertificate() {
-    const fingerprint = formatCertFingerprint(diagnostics?.certFingerprint || certFingerprint);
+    if (storedFingerprint) return;
+    const fingerprint = formatCertFingerprint(presentedFingerprint || certFingerprint);
     const certPem = String(diagnostics?.certPem || "");
     if (!window.chengjing || !editingId || !fingerprint || !certPem || trusting) return;
     setTrusting(true); setNotice("");
@@ -208,18 +219,39 @@ export function AdvancedAIProviderSettings() {
           <label className="provider-wide-field"><span>{copy.baseUrl}</span><input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} maxLength={1000} placeholder={type === "ollama" ? "http://127.0.0.1:11434/v1" : "https://gateway.example.com/v1"} required /></label>
           <label className="provider-wide-field"><span>{copy.apiKey}</span><div><KeyRound size={14} /><input type={showKey ? "text" : "password"} value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={editingProfile?.keyConfigured ? copy.keySaved : copy.keyOptional} /><button type="button" aria-label={showKey ? "Hide" : "Show"} onClick={() => setShowKey(!showKey)}>{showKey ? <EyeOff size={15} /> : <Eye size={15} />}</button></div></label>
           {notice && <p className="provider-notice" role="status">{notice}</p>}
-          {diagnostics && <p className={`provider-diagnostic is-${diagnostics.stage}`} role="status"><b>{diagnosticCopy.title}</b><span>{diagnostics.stage === "ok" ? diagnosticCopy.healthy(diagnostics.model || model) : diagnostics.stage === "url" ? diagnosticCopy.url : diagnostics.stage === "connection" ? diagnosticCopy.connection : diagnostics.stage === "api-path" ? diagnosticCopy.apiPath : diagnostics.stage === "http" ? diagnosticCopy.http(diagnostics.status || 0) : diagnosticCopy.model(diagnostics.model || model)}</span></p>}
+          {diagnostics && <p className={`provider-diagnostic is-${diagnostics.stage}`} role="status"><b>{diagnosticCopy.title}</b><span>{diagnostics.stage === "ok"
+            ? diagnosticCopy.healthy(diagnostics.model || model)
+            : diagnostics.stage === "url"
+              ? diagnosticCopy.url
+              : diagnostics.stage === "connection"
+                ? diagnosticCopy.connection
+                : diagnostics.stage === "api-path"
+                  ? diagnosticCopy.apiPath
+                  : diagnostics.stage === "http"
+                    ? diagnosticCopy.http(diagnostics.status || 0)
+                    : diagnostics.stage === "certificate"
+                      ? fingerprintChanged
+                        ? diagnosticCopy.certificateChanged
+                        : certificateExpired
+                          ? diagnosticCopy.certificateExpired
+                          : storedFingerprint
+                            ? diagnosticCopy.certificateTlsFailed
+                            : diagnosticCopy.certificate
+                      : diagnosticCopy.model(diagnostics.model || model)}</span>{diagnostics.stage === "certificate" && <small>{diagnosticCopy.errorCode}: {diagnostics.errorCode || diagnostics.code}</small>}</p>}
           {diagnostics?.stage === "certificate" && <div className="provider-cert-trust">
             <header><ShieldAlert size={15} /><b>{trustCopy.title}</b></header>
-            <p>{trustCopy.warning}</p>
-            {diagnostics.certFingerprint ? <>
+            <p>{fingerprintChanged ? trustCopy.changed : certificateExpired ? trustCopy.expired : storedFingerprint ? trustCopy.tlsFailed : trustCopy.warning}</p>
+            {(storedFingerprint || presentedFingerprint) ? <>
               <dl>
-                <div><dt>{trustCopy.fingerprint}</dt><dd><code>{formatCertFingerprint(diagnostics.certFingerprint)}</code></dd></div>
+                {storedFingerprint && <div><dt>{trustCopy.storedFingerprint}</dt><dd><code>{formatCertFingerprint(storedFingerprint)}</code></dd></div>}
+                {presentedFingerprint && <div><dt>{trustCopy.presentedFingerprint}</dt><dd><code>{formatCertFingerprint(presentedFingerprint)}</code></dd></div>}
                 {diagnostics.certSubject && <div><dt>{trustCopy.subject}</dt><dd>{diagnostics.certSubject}</dd></div>}
                 {diagnostics.certIssuer && <div><dt>{trustCopy.issuer}</dt><dd>{diagnostics.certIssuer}</dd></div>}
+                {diagnostics.certValidFrom && <div><dt>{trustCopy.validFrom}</dt><dd>{diagnostics.certValidFrom}</dd></div>}
                 {diagnostics.certValidTo && <div><dt>{trustCopy.validTo}</dt><dd>{diagnostics.certValidTo}</dd></div>}
+                {diagnostics.authorizationError && <div><dt>{trustCopy.authorizationError}</dt><dd>{diagnostics.authorizationError}</dd></div>}
               </dl>
-              <button type="button" className="secondary-button" disabled={Boolean(busy) || trusting} onClick={() => void trustCertificate()}><Fingerprint size={14} className={trusting ? "spin" : ""} />{trusting ? trustCopy.trusting : trustCopy.trust}</button>
+              {canTrustPresentedCertificate && <button type="button" className="secondary-button" disabled={Boolean(busy) || trusting} onClick={() => void trustCertificate()}><Fingerprint size={14} className={trusting ? "spin" : ""} />{trusting ? trustCopy.trusting : trustCopy.trust}</button>}
             </> : <p className="provider-cert-unavailable">{trustCopy.unavailable}</p>}
           </div>}
           {editingId && <div className="provider-generation-check"><span>{unsaved ? healthCopy.saveFirst : healthCopy.generationHint}</span><button type="button" className="secondary-button" disabled={Boolean(busy) || unsaved} onClick={() => void testGeneration()}><Activity size={14} className={busy === "generate" ? "spin" : ""} />{busy === "generate" ? healthCopy.generating : healthCopy.generation}</button></div>}

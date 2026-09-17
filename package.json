@@ -19,6 +19,7 @@
     "dist:win": "node scripts/prepare-google-oauth.mjs --required && npm run icons && npm run build && electron-builder --win --dir --x64 && node scripts/build-windows-installer.mjs x64 && electron-builder --win --dir --arm64 && node scripts/build-windows-installer.mjs arm64",
     "dist:win:x64": "node scripts/prepare-google-oauth.mjs --required && npm run icons && npm run build && electron-builder --win --dir --x64 && node scripts/build-windows-installer.mjs x64",
     "dist:win:arm64": "node scripts/prepare-google-oauth.mjs --required && npm run icons && npm run build && electron-builder --win --dir --arm64 && node scripts/build-windows-installer.mjs arm64",
+    "dist:win:qa:x64": "npm run icons && npm run build && electron-builder --win --dir --x64 && node scripts/build-windows-installer.mjs x64 && node scripts/qa-windows-package.mjs x64",
     "pretest": "node scripts/patch-transformers-gemma4.mjs",
     "test": "node scripts/patch-transformers-gemma4.mjs --check && vitest run src --environment jsdom && node --test electron/*.node.cjs",
     "qa": "node scripts/qa.mjs",

@@ -97,8 +97,15 @@ function normalizeProfile(value = {}, previous = null, preserveTimestamps = fals
   const explicitRevoke = (Object.hasOwn(value, "certFingerprint") && !String(value.certFingerprint ?? "").trim())
     || (Object.hasOwn(value, "certPem") && !String(value.certPem ?? "").trim());
   const inherit = !explicitRevoke && !incomingFingerprint && !incomingPem && Boolean(previous) && !originChanged;
-  const candidateFingerprint = incomingFingerprint || (inherit ? normalizeCertFingerprint(previous?.certFingerprint) : "");
-  const candidatePem = incomingPem || (inherit ? normalizeCertPem(previous?.certPem) : "");
+  // Changing the HTTPS origin always revokes the old pin. Do not accept the
+  // stale pair that a renderer may still have in its form state in the same
+  // save operation; the user must test the new origin and explicitly trust it.
+  const candidateFingerprint = !originChanged
+    ? incomingFingerprint || (inherit ? normalizeCertFingerprint(previous?.certFingerprint) : "")
+    : "";
+  const candidatePem = !originChanged
+    ? incomingPem || (inherit ? normalizeCertPem(previous?.certPem) : "")
+    : "";
   const pairedFingerprint = fingerprintFromCertificate({ data: candidatePem });
   const trustedFingerprint = candidateFingerprint && pairedFingerprint === candidateFingerprint ? candidateFingerprint : "";
   const trustedCertPem = trustedFingerprint ? candidatePem : "";

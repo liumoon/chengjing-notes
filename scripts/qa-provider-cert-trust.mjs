@@ -144,9 +144,13 @@ try {
   result = await bridge.test(id);
   ok("私有網段 HTTP 不受憑證機制影響", result.ok === true, JSON.stringify(result.diagnostics || {}));
 
-  await bridge.upsert({ id, ...base, baseUrl: gatewayUrl, certFingerprint: gateway.fingerprint, certPem: gateway.pem, select: true });
+  settings = await bridge.upsert({ id, ...base, baseUrl: gatewayUrl, select: true });
+  ok("從 HTTP 切回 HTTPS 時清除舊 origin 的信任", settings.profiles[0].certFingerprint === "" && !settings.profiles[0].certPem, JSON.stringify({ fp: settings.profiles[0].certFingerprint, pem: Boolean(settings.profiles[0].certPem) }));
   result = await bridge.test(id);
-  ok("同一 Provider 可在 HTTPS 與 HTTP 間切換且互不干擾", result.ok === true, JSON.stringify(result.diagnostics || {}));
+  ok("切回 HTTPS 後必須重新核對憑證", result.ok === false && result.diagnostics?.stage === "certificate", JSON.stringify(result.diagnostics || {}));
+  settings = await bridge.upsert({ id, ...base, baseUrl: gatewayUrl, certFingerprint: gateway.fingerprint, certPem: gateway.pem, select: true });
+  result = await bridge.test(id);
+  ok("重新核對後 HTTPS 恢復連線", result.ok === true, JSON.stringify(result.diagnostics || {}));
 
   const trustCopyTitle = "信任這個伺服器憑證";
   const trustCopyRevoke = "撤銷憑證信任";

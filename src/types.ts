@@ -346,14 +346,22 @@ export type AIProviderDiagnosticStage = "url" | "connection" | "certificate" | "
 export interface AIProviderDiagnostics {
   stage: AIProviderDiagnosticStage;
   code: string;
+  errorCode?: string;
+  errorPhase?: "url" | "tls" | "request" | "response";
   status?: number;
   endpoint?: string;
   model?: string;
+  /** 舊版 renderer 使用的目前憑證指紋，保留以維持相容性。 */
   certFingerprint?: string;
   certPem?: string;
   certSubject?: string;
   certIssuer?: string;
+  certValidFrom?: string;
   certValidTo?: string;
+  storedFingerprint?: string;
+  presentedFingerprint?: string;
+  fingerprintMatch?: boolean | null;
+  authorizationError?: string;
 }
 
 export interface AIProviderTestResult {

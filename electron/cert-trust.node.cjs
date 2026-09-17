@@ -19,7 +19,43 @@ const {
 async function selfSignedFixture(root, name) {
   const keyPath = path.join(root, `${name}-key.pem`);
   const certPath = path.join(root, `${name}-cert.pem`);
-  execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-keyout", keyPath, "-out", certPath, "-days", "1", "-nodes", "-subj", `/CN=${name}.litellm.test`, "-addext", "subjectAltName=IP:127.0.0.1,DNS:localhost"], { stdio: "ignore" });
+  execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-keyout", keyPath, "-out", certPath, "-days", "1", "-nodes", "-subj", `/CN=${name}.litellm.test`, "-addext", "subjectAltName=IP:127.0.0.1,DNS:localhost", "-addext", "basicConstraints=critical,CA:TRUE", "-addext", "keyUsage=critical,digitalSignature"], { stdio: "ignore" });
+  const cert = await fs.readFile(certPath);
+  const key = await fs.readFile(keyPath);
+  const pem = cert.toString("utf8");
+  const fingerprint = execFileSync("openssl", ["x509", "-in", certPath, "-noout", "-fingerprint", "-sha256"], { encoding: "utf8" }).split("=")[1].trim().replace(/:/g, "").toUpperCase();
+  return { key, cert, pem, fingerprint };
+}
+
+async function expiredSelfSignedFixture(root, name) {
+  const keyPath = path.join(root, `${name}-key.pem`);
+  const requestPath = path.join(root, `${name}-request.pem`);
+  const certPath = path.join(root, `${name}-cert.pem`);
+  const configPath = path.join(root, `${name}-openssl.cnf`);
+  const databasePath = path.join(root, `${name}-index.txt`);
+  const serialPath = path.join(root, `${name}-serial`);
+  const newCertsDirectory = path.join(root, `${name}-newcerts`);
+  await fs.mkdir(newCertsDirectory);
+  await fs.writeFile(databasePath, "");
+  await fs.writeFile(serialPath, "01\n");
+  await fs.writeFile(configPath, `[ ca ]
+default_ca = local_ca
+[ local_ca ]
+database = ${databasePath}
+new_certs_dir = ${newCertsDirectory}
+serial = ${serialPath}
+default_md = sha256
+policy = policy_any
+x509_extensions = ext
+[ policy_any ]
+commonName = supplied
+[ ext ]
+subjectAltName = IP:127.0.0.1,DNS:localhost
+basicConstraints = critical,CA:TRUE
+keyUsage = critical,digitalSignature
+`);
+  execFileSync("openssl", ["req", "-new", "-newkey", "rsa:2048", "-keyout", keyPath, "-out", requestPath, "-nodes", "-subj", `/CN=${name}.litellm.test`], { stdio: "ignore" });
+  execFileSync("openssl", ["ca", "-config", configPath, "-selfsign", "-batch", "-notext", "-keyfile", keyPath, "-in", requestPath, "-out", certPath, "-startdate", "20200101000000Z", "-enddate", "20200102000000Z"], { stdio: "ignore" });
   const cert = await fs.readFile(certPath);
   const key = await fs.readFile(keyPath);
   const pem = cert.toString("utf8");
@@ -38,7 +74,7 @@ const fixtureRoot = fsSync.mkdtempSync(path.join(os.tmpdir(), "chengjing-cert-un
 function selfSignedSync(root, name) {
   const keyPath = path.join(root, `${name}-key.pem`);
   const certPath = path.join(root, `${name}-cert.pem`);
-  execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-keyout", keyPath, "-out", certPath, "-days", "1", "-nodes", "-subj", `/CN=${name}.litellm.test`, "-addext", "subjectAltName=IP:127.0.0.1,DNS:localhost"], { stdio: "ignore" });
+  execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-keyout", keyPath, "-out", certPath, "-days", "1", "-nodes", "-subj", `/CN=${name}.litellm.test`, "-addext", "subjectAltName=IP:127.0.0.1,DNS:localhost", "-addext", "basicConstraints=critical,CA:TRUE", "-addext", "keyUsage=critical,digitalSignature"], { stdio: "ignore" });
   const pem = fsSync.readFileSync(certPath, "utf8");
   return { pem, fingerprint: execFileSync("openssl", ["x509", "-in", certPath, "-noout", "-fingerprint", "-sha256"], { encoding: "utf8" }).split("=")[1].trim().replace(/:/g, "").toUpperCase() };
 }
@@ -101,7 +137,7 @@ test("憑證放行需主機與指紋同時相符", () => {
   assert.equal(isCertificateAllowed(profiles, "https://10.0.10.61:8443/v1/models", COLONS), false);
   assert.equal(isCertificateAllowed(profiles, "https://10.0.10.60:8443/v1/models", "A".repeat(64)), false);
   assert.equal(isCertificateAllowed(profiles, "https://10.0.10.60:8443/v1/models", ""), false);
-  assert.equal(isCertificateAllowed(profiles, "http://10.0.10.60:8443/v1/models", COLONS), true);
+  assert.equal(isCertificateAllowed(profiles, "http://10.0.10.60:8443/v1/models", COLONS), false);
   assert.equal(isCertificateAllowed([], "https://10.0.10.60:8443/v1/models", COLONS), false);
   assert.equal(isCertificateAllowed([{ id: "x", baseUrl: "https://a.test/v1" }], "https://a.test/v1", COLONS), false);
   assert.deepEqual(pinnedFingerprintForTarget(profiles, "https://10.0.10.60:8443/v1")?.id, "litellm01");
@@ -159,6 +195,7 @@ test("憑證信任需指紋與 PEM 成對吻合，並隨 origin 失效", async (
     assert.equal(normalizeProfile({ id: "litellm01", baseUrl: "https://litellm.other.test/v1", model: "qwen3:8b" }, pinned).certFingerprint, "");
     assert.equal(normalizeProfile({ id: "litellm01", baseUrl: "https://10.0.10.60:9443/v1", model: "qwen3:8b" }, pinned).certFingerprint, "");
     assert.equal(normalizeProfile({ id: "litellm01", baseUrl: "http://10.0.10.60:8443/v1", model: "qwen3:8b" }, pinned).certFingerprint, "");
+    assert.equal(normalizeProfile({ id: "litellm01", baseUrl: "https://litellm.other.test/v1", model: "qwen3:8b", certFingerprint: FP, certPem: PEM }, pinned).certFingerprint, "", "換來源時不可沿用 renderer 仍保留的舊 pin");
     // 明確傳空字串＝撤銷。
     assert.equal(normalizeProfile({ id: "litellm01", baseUrl: "https://10.0.10.60:8443/v1", model: "qwen3:8b", certFingerprint: "" }, pinned).certFingerprint, "");
     assert.equal(normalizeProfile({ id: "litellm01", baseUrl: "https://10.0.10.60:8443/v1", model: "qwen3:8b", certPem: "" }, pinned).certPem, "");
@@ -182,7 +219,15 @@ test("pinnedHttpsFetch 用核准過的憑證完成真實 TLS 請求", async () =
   try {
     const { key, cert, pem, fingerprint } = await selfSignedFixture(root, "pinned");
     const payload = JSON.stringify({ object: "list", data: [{ id: "qwen3:8b" }] });
-    const server = https.createServer({ key, cert }, (_req, res) => { res.writeHead(200, { "Content-Type": "application/json", "X-QA": "yes" }); res.end(payload); });
+    let requestCount = 0;
+    let bodyBytes = 0;
+    let secureConnectionCount = 0;
+    const server = https.createServer({ key, cert }, (req, res) => {
+      requestCount += 1;
+      req.on("data", (chunk) => { bodyBytes += chunk.length; });
+      req.on("end", () => { res.writeHead(200, { "Content-Type": "application/json", "X-QA": "yes" }); res.end(payload); });
+    });
+    server.on("secureConnection", () => { secureConnectionCount += 1; });
     const port = await listenOn(server);
     try {
       const res = await pinnedHttpsFetch(`https://127.0.0.1:${port}/v1/models`, { certFingerprint: fingerprint, certPem: pem }, { method: "GET" });
@@ -192,11 +237,124 @@ test("pinnedHttpsFetch 用核准過的憑證完成真實 TLS 請求", async () =
       assert.equal(await res.text(), payload);
       const posted = await pinnedHttpsFetch(`https://127.0.0.1:${port}/v1/chat/completions`, { certFingerprint: fingerprint, certPem: pem }, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "qwen3:8b" }) });
       assert.equal(posted.status, 200);
-      await assert.rejects(() => pinnedHttpsFetch(`https://127.0.0.1:${port}/v1/models`, { certFingerprint: "B".repeat(64), certPem: pem }, {}), /ERR_CERT_AUTHORITY_INVALID/);
+      assert.equal(requestCount, 2);
+      assert.equal(secureConnectionCount, 2, "每次請求都應建立新的 TLS 連線");
+      const requestsBeforeMismatch = requestCount;
+      const bodyBeforeMismatch = bodyBytes;
+      await assert.rejects(() => pinnedHttpsFetch(`https://127.0.0.1:${port}/v1/models`, { certFingerprint: "B".repeat(64), certPem: pem }, {}), (error) => error?.code === "cert-invalid");
       await assert.rejects(() => pinnedHttpsFetch(`http://127.0.0.1:${port}/v1/models`, { certFingerprint: fingerprint, certPem: pem }, {}), /cert-target-invalid/);
       await assert.rejects(() => pinnedHttpsFetch(`https://127.0.0.1:${port}/v1/models`, { certFingerprint: fingerprint, certPem: "" }, {}), /cert-pin-missing/);
       const other = await selfSignedFixture(root, "other");
-      await assert.rejects(() => pinnedHttpsFetch(`https://127.0.0.1:${port}/v1/models`, { certFingerprint: other.fingerprint, certPem: other.pem }, {}), /ERR_CERT_AUTHORITY_INVALID/);
+      await assert.rejects(() => pinnedHttpsFetch(`https://127.0.0.1:${port}/v1/models`, { certFingerprint: other.fingerprint, certPem: other.pem }, {}), (error) => error?.code === "cert-pin-mismatch" && error.presentedFingerprint === fingerprint);
+      await assert.rejects(() => pinnedHttpsFetch(`https://127.0.0.1:${port}/v1/models`, { certFingerprint: fingerprint, certPem: pem, origin: `https://127.0.0.1:${port + 1}` }, {}), (error) => error?.code === "cert-target-invalid");
+      await assert.rejects(() => pinnedHttpsFetch(`https://user:pass@127.0.0.1:${port}/v1/models`, { certFingerprint: fingerprint, certPem: pem }, {}), /cert-target-invalid/);
+      assert.equal(requestCount, requestsBeforeMismatch, "指紋不符時不可送出 HTTP 請求");
+      assert.equal(bodyBytes, bodyBeforeMismatch, "指紋不符時不可送出 HTTP body");
+    } finally {
+      await closeServer(server);
+    }
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("CA:TRUE 但缺少完整 CA 用途的自簽憑證，在明確 pin 下仍可連線", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "chengjing-ca-true-"));
+  try {
+    const fixture = await selfSignedFixture(root, "ca-true");
+    const server = https.createServer({ key: fixture.key, cert: fixture.cert }, (_req, res) => { res.end("ok"); });
+    const port = await listenOn(server);
+    try {
+      const response = await pinnedHttpsFetch(`https://127.0.0.1:${port}/`, { certFingerprint: fixture.fingerprint, certPem: fixture.pem }, {});
+      assert.equal(response.status, 200);
+      assert.equal(await response.text(), "ok");
+    } finally {
+      await closeServer(server);
+    }
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("已過期自簽憑證即使指紋正確也會拒絕", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "chengjing-expired-cert-"));
+  try {
+    const fixture = await expiredSelfSignedFixture(root, "expired");
+    const server = https.createServer({ key: fixture.key, cert: fixture.cert }, (_req, res) => { res.end("should-not-be-requested"); });
+    const port = await listenOn(server);
+    try {
+      await assert.rejects(
+        () => pinnedHttpsFetch(`https://127.0.0.1:${port}/v1/models`, { certFingerprint: fixture.fingerprint, certPem: fixture.pem }, {}),
+        (error) => error?.code === "cert-expired" && error.presentedFingerprint === fixture.fingerprint,
+      );
+    } finally {
+      await closeServer(server);
+    }
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("pinnedHttpsFetch 不自動跟隨重新導向，也不送出 body", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "chengjing-redirect-"));
+  try {
+    const fixture = await selfSignedFixture(root, "redirect");
+    let requestCount = 0;
+    let bodyBytes = 0;
+    const server = https.createServer({ key: fixture.key, cert: fixture.cert }, (req, res) => {
+      requestCount += 1;
+      req.on("data", (chunk) => { bodyBytes += chunk.length; });
+      req.on("end", () => {
+        if (req.url === "/v1/models") {
+          res.writeHead(302, { Location: "https://127.0.0.1:1/v1/models" });
+          res.end();
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ object: "list", data: [] }));
+      });
+    });
+    const port = await listenOn(server);
+    try {
+      const pinned = { certFingerprint: fixture.fingerprint, certPem: fixture.pem };
+      const response = await pinnedHttpsFetch(`https://127.0.0.1:${port}/v1/models`, pinned, { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"secret":"private-note"}' });
+      assert.equal(response.status, 302, "必須把 3xx 原封不動回報，交由上層決定");
+      assert.equal(response.ok, false);
+      assert.equal(response.headers.get("location"), `https://127.0.0.1:1/v1/models`);
+      assert.equal(requestCount, 1, "pinned 通道不得自行跟隨重新導向");
+      assert.equal(bodyBytes, '{"secret":"private-note"}'.length);
+    } finally {
+      await closeServer(server);
+    }
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("pinnedHttpsFetch 正確組裝 chunked 回應並在中止時回報逾時", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "chengjing-chunked-"));
+  try {
+    const fixture = await selfSignedFixture(root, "chunked");
+    const server = https.createServer({ key: fixture.key, cert: fixture.cert }, (req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.write('{"object":');
+      res.write('"list","data":');
+      res.end("[{\"id\":\"omlx-qwen38-flash-oq4e\"}]}");
+    });
+    const port = await listenOn(server);
+    try {
+      const pinned = { certFingerprint: fixture.fingerprint, certPem: fixture.pem };
+      const response = await pinnedHttpsFetch(`https://127.0.0.1:${port}/v1/models`, pinned, {});
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get("transfer-encoding"), "chunked");
+      assert.deepEqual(JSON.parse(await response.text()), { object: "list", data: [{ id: "omlx-qwen38-flash-oq4e" }] });
+
+      const controller = new AbortController();
+      controller.abort();
+      await assert.rejects(
+        () => pinnedHttpsFetch(`https://127.0.0.1:${port}/v1/models`, pinned, { signal: controller.signal }),
+        (error) => error?.code === "provider-timeout",
+      );
     } finally {
       await closeServer(server);
     }

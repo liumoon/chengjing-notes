@@ -1469,10 +1469,28 @@ ipcMain.handle("ai:openrouter-chat", async (_event, request) => {
 async function attachCertificateHint(profile, result) {
   const diagnostics = result?.diagnostics;
   if (!diagnostics || diagnostics.stage !== "certificate") return result;
-  if (certTrustApi().normalizeCertFingerprint(profile?.certFingerprint)) return result;
+  const trust = certTrustApi();
+  const storedFingerprint = trust.normalizeCertFingerprint(profile?.certFingerprint);
   try {
-    const peer = await certTrustApi().readPeerCertificate(diagnostics.endpoint || profile?.baseUrl);
-    return { ...result, diagnostics: { ...diagnostics, certFingerprint: peer.fingerprint, certPem: peer.certPem, certSubject: peer.subject, certIssuer: peer.issuer, certValidTo: peer.validTo } };
+    const peer = await trust.readPeerCertificate(diagnostics.endpoint || profile?.baseUrl);
+    const fingerprintMatch = storedFingerprint ? peer.fingerprint === storedFingerprint : null;
+    return {
+      ...result,
+      diagnostics: {
+        ...diagnostics,
+        storedFingerprint,
+        presentedFingerprint: peer.fingerprint,
+        fingerprintMatch,
+        // Keep certFingerprint for older renderer/builds and existing QA consumers.
+        certFingerprint: peer.fingerprint,
+        certPem: peer.certPem,
+        certSubject: peer.subject,
+        certIssuer: peer.issuer,
+        certValidFrom: peer.validFrom,
+        certValidTo: peer.validTo,
+        authorizationError: peer.authorizationError,
+      },
+    };
   } catch { return result; }
 }
 
@@ -1633,7 +1651,9 @@ function providerFetch(profile) {
   const pinnedOrigin = fingerprint && certPem ? trust.originOf(profile?.baseUrl) : "";
   return (url, options = {}) => {
     // 只有同源 https 請求才走自訂信任锚；協定、主機或埠不同就回到 Chromium 嚴格驗證。
-    if (pinnedOrigin && trust.isHttpsTarget(url) && trust.originOf(url) === pinnedOrigin) return trust.pinnedHttpsFetch(url, { certFingerprint: fingerprint, certPem }, options);
+    if (pinnedOrigin && trust.isHttpsTarget(url) && trust.originOf(url) === pinnedOrigin) {
+      return trust.pinnedHttpsFetch(url, { certFingerprint: fingerprint, certPem, origin: pinnedOrigin }, options);
+    }
     return net.fetch(url, options);
   };
 }

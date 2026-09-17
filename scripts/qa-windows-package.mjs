@@ -5,10 +5,15 @@ import { extractFile, listPackage } from "@electron/asar";
 
 const releaseDirectory = path.resolve("release");
 const version = JSON.parse(await fs.readFile("package.json", "utf8")).version;
-const packages = [
+const allPackages = [
   { arch: "x64", machine: 0x8664, directory: path.join(releaseDirectory, "win-unpacked") },
   { arch: "arm64", machine: 0xaa64, directory: path.join(releaseDirectory, "win-arm64-unpacked") },
 ];
+const requestedArch = process.argv[2] || "";
+if (requestedArch && !allPackages.some((target) => target.arch === requestedArch)) {
+  throw new Error("usage: node scripts/qa-windows-package.mjs [x64|arm64]");
+}
+const packages = requestedArch ? allPackages.filter((target) => target.arch === requestedArch) : allPackages;
 
 async function sha256(filePath) {
   return createHash("sha256").update(await fs.readFile(filePath)).digest("hex");
@@ -37,6 +42,7 @@ for (const target of packages) {
   const asarPath = path.join(target.directory, "resources", "app.asar");
   const unpackedAvailable = await fs.access(executable).then(() => true).catch(() => false);
   if (!unpackedAvailable) {
+    if (requestedArch) throw new Error(`windows-package-${target.arch}-missing:${target.directory}`);
     architectureReports.push({ arch: target.arch, unpackedAvailable: false, checks: null });
     continue;
   }
@@ -45,12 +51,14 @@ for (const target of packages) {
   const files = listPackage(asarPath);
   const packagedMetadata = JSON.parse(extractFile(asarPath, "package.json").toString("utf8"));
   const mainSource = extractFile(asarPath, "electron/main.cjs").toString("utf8");
+  const certTrustSource = extractFile(asarPath, "electron/cert-trust.cjs").toString("utf8");
   const transformersBundle = files.find((file) => /^\/dist\/assets\/transformers\.web-.*\.js$/.test(file));
   const transformersSource = transformersBundle ? extractFile(asarPath, transformersBundle.slice(1)).toString("utf8") : "";
   const checks = {
     nativeArchitecture: machine === target.machine,
     nativeUninstallerArchitecture: uninstallerMachine === target.machine,
     versionMatches: packagedMetadata.version === version,
+    certTrustBundled: files.includes("/electron/cert-trust.cjs") && certTrustSource.includes("pinnedHttpsFetch"),
     windowsTrayBundled: files.includes("/electron/assets/ChengJingTray.png"),
     rendererBundled: files.includes("/dist/index.html"),
     macHelperExcluded: !files.some((file) => file.includes("ChengJingQuickCapture.app")),
@@ -74,6 +82,7 @@ const installers = await Promise.all(packages.map(async ({ arch }) => {
     name,
     bytes: stat.size,
     machine: `0x${machine.toString(16)}`,
+    sha256: await sha256(installerPath),
     architectureSpecific: machine === expectedMachine && stat.size > 100_000_000 && stat.size < 220_000_000,
   };
 }));
@@ -85,15 +94,21 @@ const checksumSidecarsAbsent = !releaseFiles.some((name) => name.endsWith(".sha2
 const unpackedReports = architectureReports.filter((item) => item.unpackedAvailable);
 const report = {
   version,
+  requestedArch: requestedArch || null,
   installers,
   architectures: architectureReports,
-  unpackedApplicationChecked: unpackedReports.length === packages.length,
-  sharedApplicationCode: unpackedReports.length === packages.length
+  unpackedApplicationChecked: unpackedReports.length === packages.length && packages.length > 0,
+  sharedApplicationCode: unpackedReports.length === packages.length && unpackedReports.length > 1
     ? unpackedReports[0].asarSha256 === unpackedReports[1].asarSha256
     : null,
   checksumSidecarsAbsent,
   releaseFiles,
 };
 
-if (report.installers.some((installer) => !installer.architectureSpecific) || !report.checksumSidecarsAbsent || report.sharedApplicationCode === false) throw new Error(`windows-architecture-installers:${JSON.stringify(report)}`);
+if (report.installers.some((installer) => !installer.architectureSpecific)
+  || !report.checksumSidecarsAbsent
+  || report.sharedApplicationCode === false
+  || report.architectures.some((item) => item.unpackedAvailable && Object.values(item.checks || {}).some((value) => value !== true))) {
+  throw new Error(`windows-architecture-installers:${JSON.stringify(report)}`);
+}
 console.log(JSON.stringify(report, null, 2));
